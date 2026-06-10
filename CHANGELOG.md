@@ -4,7 +4,7 @@ All notable changes to Developer Options Persist are documented here.
 
 ---
 
-## [v1] — 2025
+## v1
 
 ### Added
 - Initial release
