@@ -4,6 +4,12 @@ All notable changes to Developer Options Persist are documented here.
 
 ---
 
+## v2
+
+Re-Build
+
+---
+
 ## v1
 
 ### Added
