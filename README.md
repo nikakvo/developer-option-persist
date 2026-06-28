@@ -66,7 +66,7 @@ You can edit this file manually with a root-capable file manager or via ADB shel
 
 If your manager supports WebUI (SukiSU Ultra), tap the module's web icon to open the built-in control panel. It shows live vs configured values for each setting and lets you toggle them with a switch.
 
-<img width="300" alt="dnscrypt" src="https://raw.githubusercontent.com/nikakvo/developer-option-persist/main/Dev-Oprion.jpg" />
+<img width="300" alt="dnscrypt" src="https://raw.githubusercontent.com/nikakvo/developer-option-persist/main/DevOprion.jpg" />
 
 ---
 
