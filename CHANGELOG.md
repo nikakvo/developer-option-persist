@@ -4,6 +4,14 @@ All notable changes to Developer Options Persist are documented here.
 
 ---
 
+v3
+
+- Add: USB Debugging (Security settings) toggle
+  persist.security.adbinput (0/1) via setprop
+- Add: adbinput=1 default in config
+
+---
+
 ## v2
 
 Re-Build
