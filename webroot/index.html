@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Dev Options Persist</title>
+  <style>
+    :root {
+      --bg:#0a0a08;--bg2:#0f0f0c;--surface:#141410;--surface2:#1a1a15;
+      --border:#252520;--border2:#33332a;--amber:#f5a623;--amber-dim:#f5a62330;
+      --green:#7ecb35;--green-dim:#7ecb3530;--red:#e05c5c;--red-dim:#e05c5c30;
+      --cyan:#4ecdc4;--purple:#b07fff;--purple-dim:#b07fff30;
+      --text:#b8b89a;--text-dim:#5a5a48;--text-hi:#eeeedd;
+      --mono:ui-monospace,'IBM Plex Mono','Roboto Mono',Menlo,Consolas,monospace;
+      --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    body{
+      background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
+      /* The system bars stay visible — we never go immersive. */
+      padding-bottom:calc(env(safe-area-inset-bottom,0px) + 32px);
+      padding-left:env(safe-area-inset-left,0px);
+      padding-right:env(safe-area-inset-right,0px);
+    }
+    .header{background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 16px;padding-top:calc(env(safe-area-inset-top,0px) + 14px);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;}
+    .header-left{display:flex;align-items:center;gap:10px;}
+    .logo{width:36px;height:36px;background:linear-gradient(135deg,#1f1e10,#0f0f08);border:1px solid var(--amber);border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px var(--amber-dim);flex-shrink:0;}
+    .logo svg{width:16px;height:16px;}
+    .header-title{font-size:15px;font-weight:700;color:var(--text-hi);}
+    .header-sub{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;}
+
+    .status-bar{margin:14px 14px 0;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .status-left{display:flex;align-items:center;gap:8px;min-width:0;}
+    .daemon-dot{width:7px;height:7px;border-radius:50%;background:var(--text-dim);flex-shrink:0;transition:background .3s;}
+    .daemon-dot.running{background:var(--green);box-shadow:0 0 6px var(--green-dim);animation:pulse 2s infinite;}
+    .daemon-dot.stopped{background:var(--red);}
+    .daemon-dot.warn{background:var(--amber);}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+    .daemon-label{color:var(--text-dim);font-size:11px;}
+    .daemon-status{color:var(--text-hi);font-size:12px;font-weight:600;}
+    .daemon-meta{font-size:10px;font-family:var(--mono);color:var(--text-dim);margin-top:2px;}
+    .refresh-btn{background:transparent;border:1px solid var(--border2);border-radius:5px;color:var(--text-dim);padding:5px 10px;font-size:11px;cursor:pointer;font-family:var(--mono);flex-shrink:0;}
+    .refresh-btn:active{opacity:0.6;}
+
+    .chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 14px 0;}
+    .chip{font-size:9px;font-family:var(--mono);padding:3px 8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border2);color:var(--text-dim);}
+    .chip b{color:var(--cyan);}
+
+    .section-title{font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);font-family:var(--mono);padding:18px 16px 8px;}
+    .section-title::before{content:'// ';color:var(--amber);opacity:0.5;}
+
+    .cards{padding:0 14px;display:flex;flex-direction:column;gap:10px;}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:14px;}
+    .card.loading{opacity:0.6;pointer-events:none;}
+    .card-icon{width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:var(--surface2);border:1px solid var(--border);}
+    .card-icon svg{width:18px;height:18px;}
+    .card-body{flex:1;min-width:0;}
+    .card-name{font-size:14px;font-weight:600;color:var(--text-hi);margin-bottom:3px;}
+    .card-key{font-size:10px;font-family:var(--mono);color:var(--text-dim);word-break:break-all;}
+    .card-val{display:inline-block;font-size:10px;font-family:var(--mono);padding:1px 6px;border-radius:3px;margin-top:4px;font-weight:700;}
+    .card-val.on{background:rgba(126,203,53,0.12);color:var(--green);border:1px solid rgba(126,203,53,0.25);}
+    .card-val.off{background:rgba(224,92,92,0.1);color:var(--red);border:1px solid rgba(224,92,92,0.2);}
+    .card-val.neutral{background:rgba(245,166,35,0.1);color:var(--amber);border:1px solid rgba(245,166,35,0.2);}
+
+    .toggle-wrap{flex-shrink:0;}
+    .toggle{position:relative;width:50px;height:28px;display:inline-block;}
+    .toggle input{opacity:0;width:0;height:0;}
+    .slider{position:absolute;inset:0;background:var(--surface2);border:1px solid var(--border2);border-radius:28px;cursor:pointer;transition:all .25s;}
+    .slider::before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;background:var(--text-dim);border-radius:50%;transition:all .25s;}
+    input:checked+.slider{background:rgba(126,203,53,0.15);border-color:rgba(126,203,53,0.4);}
+    input:checked+.slider::before{transform:translateX(22px);background:var(--green);box-shadow:0 0 8px var(--green-dim);}
+    .toggle.inverted input:checked+.slider{background:rgba(224,92,92,0.15);border-color:rgba(224,92,92,0.4);}
+    .toggle.inverted input:checked+.slider::before{background:var(--red);box-shadow:0 0 8px var(--red-dim);}
+    .toggle.inverted input:not(:checked)+.slider{background:rgba(126,203,53,0.15);border-color:rgba(126,203,53,0.4);}
+    .toggle.inverted input:not(:checked)+.slider::before{background:var(--green);box-shadow:0 0 8px var(--green-dim);}
+    .spinner{width:18px;height:18px;border:2px solid var(--border2);border-top-color:var(--amber);border-radius:50%;animation:spin .6s linear infinite;display:none;flex-shrink:0;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .card.loading .spinner{display:block;}
+    .card.loading .toggle-wrap{display:none;}
+
+    /* ── RUNTIME TABLE ── */
+    .table-wrap{margin:0 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+    table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px;}
+    th{text-align:left;padding:9px 10px;color:var(--text-dim);font-weight:400;text-transform:uppercase;letter-spacing:0.08em;font-size:9px;border-bottom:1px solid var(--border);background:var(--bg2);}
+    td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top;word-break:break-word;}
+    tr:last-child td{border-bottom:none;}
+    td.name{color:var(--text-hi);}
+    td.name span{display:block;color:var(--text-dim);font-size:9px;margin-top:2px;}
+    .pill{display:inline-block;padding:1px 6px;border-radius:3px;font-weight:700;font-size:9px;}
+    .pill.ok{background:rgba(126,203,53,0.12);color:var(--green);border:1px solid rgba(126,203,53,0.25);}
+    .pill.bad{background:rgba(224,92,92,0.1);color:var(--red);border:1px solid rgba(224,92,92,0.2);}
+    .pill.skip{background:rgba(176,127,255,0.1);color:var(--purple);border:1px solid rgba(176,127,255,0.25);}
+
+    /* ── ACTIONS ── */
+    .actions{padding:0 14px;display:flex;gap:8px;}
+    .action-btn{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:6px;padding:13px 8px;background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;}
+    .action-btn svg{width:17px;height:17px;}
+    .action-btn:active{opacity:0.5;}
+    .action-btn.amber{border-color:rgba(245,166,35,0.3);color:var(--amber);}
+    .action-btn.green{border-color:rgba(126,203,53,0.3);color:var(--green);}
+    .action-btn.purple{border-color:rgba(176,127,255,0.3);color:var(--purple);}
+    .action-btn:disabled{opacity:0.3;pointer-events:none;}
+
+    /* ── SELECTS ── */
+    .sel{background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text-hi);font-family:var(--mono);font-size:11px;padding:6px 8px;-webkit-appearance:none;flex-shrink:0;}
+
+    /* ── LOG ── */
+    .log-wrap{margin:0 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+    .log-bar{padding:9px 12px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+    .fbtn{padding:3px 7px;background:transparent;border:1px solid var(--border2);border-radius:4px;font-family:var(--mono);font-size:9px;font-weight:700;cursor:pointer;color:var(--text-dim);}
+    .fbtn.info.active{background:rgba(78,205,196,0.12);border-color:rgba(78,205,196,0.35);color:var(--cyan);}
+    .fbtn.warn.active{background:var(--amber-dim);border-color:rgba(245,166,35,0.35);color:var(--amber);}
+    .fbtn.error.active{background:var(--red-dim);border-color:rgba(224,92,92,0.35);color:var(--red);}
+    .fbtn.debug.active{background:rgba(184,184,154,0.08);border-color:var(--border2);color:var(--text);}
+    .log-size{font-size:9px;font-family:var(--mono);color:var(--text-dim);margin-left:auto;}
+    .log-body{font-family:var(--mono);font-size:10px;line-height:1.7;padding:9px 12px;height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    .log-line{display:block;white-space:pre-wrap;word-break:break-all;}
+    .log-line.INFO{color:var(--text);}
+    .log-line.WARN{color:var(--amber);}
+    .log-line.ERROR{color:var(--red);}
+    .log-line.DEBUG{color:var(--text-dim);}
+    .log-empty{color:var(--text-dim);font-size:10px;font-family:var(--mono);text-align:center;display:block;padding:20px 0;}
+
+    .note{margin:0 14px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:10px;font-family:var(--mono);color:var(--text-dim);line-height:1.6;}
+    .note b{color:var(--text);}
+
+    .toast{position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:10px 18px;font-size:13px;color:var(--text-hi);opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;z-index:100;}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+    .toast.ok{border-color:rgba(126,203,53,0.3);color:var(--green);}
+    .toast.err{border-color:rgba(224,92,92,0.3);color:var(--red);}
+    .footer{text-align:center;padding:24px 16px 8px;font-size:10px;font-family:var(--mono);color:var(--text-dim);}
+    .fatal{margin:40px 14px;padding:18px;background:var(--red-dim);border:1px solid rgba(224,92,92,0.35);border-radius:10px;color:var(--red);font-family:var(--mono);font-size:11px;line-height:1.7;}
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8M12 17v4M7 8l3 3-3 3M13 14h4"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">Dev Options Persist</div>
+      <div class="header-sub" id="headerSub">loading…</div>
+    </div>
+  </div>
+</div>
+
+<div class="status-bar">
+  <div class="status-left">
+    <div class="daemon-dot" id="daemonDot"></div>
+    <div>
+      <div class="daemon-status" id="daemonStatus">checking…</div>
+      <div class="daemon-meta" id="daemonMeta">—</div>
+    </div>
+  </div>
+  <button class="refresh-btn" onclick="refreshAll()">↻ refresh</button>
+</div>
+
+<div class="chips">
+  <div class="chip">profile <b id="chipProfile">—</b></div>
+  <div class="chip">poll <b id="chipPoll">—</b></div>
+  <div class="chip">corrections <b id="chipApplies">—</b></div>
+  <div class="chip">drift <b id="chipDrift">—</b></div>
+</div>
+
+<div class="section-title">settings</div>
+<div class="cards" id="cards"></div>
+
+<div class="section-title">runtime</div>
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>setting</th><th>config</th><th>live</th><th>state</th></tr>
+    </thead>
+    <tbody id="runtimeBody">
+      <tr><td colspan="4" style="color:var(--text-dim);text-align:center;">loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section-title">actions</div>
+<div class="actions">
+  <button class="action-btn green" id="btn-apply" onclick="doAction('apply')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polyline points="20 6 9 17 4 12"/></svg>
+    Apply<br>Now
+  </button>
+  <button class="action-btn amber" id="btn-daemon" onclick="doAction('daemon')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+    Restart<br>Daemon
+  </button>
+  <button class="action-btn purple" id="btn-restore" onclick="doAction('restore')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>
+    Restore<br>Original
+  </button>
+</div>
+
+<div class="section-title">tuning</div>
+<div class="cards">
+  <div class="card" id="card-profile">
+    <div class="card-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.8">
+        <path d="M6 7h11a3 3 0 0 1 3 3v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-4a3 3 0 0 1 3-3z"/>
+        <path d="M22 11v2"/><path d="M7 11v2"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <div class="card-name">Poll Profile</div>
+      <div class="card-key" id="profileHint">battery vs. responsiveness</div>
+    </div>
+    <div class="spinner"></div>
+    <select class="sel" id="sel-profile" onchange="setProfile()">
+      <option value="fast">fast · 5–15s</option>
+      <option value="balanced">balanced · 15–60s</option>
+      <option value="battery">battery · 30–300s</option>
+    </select>
+  </div>
+
+  <div class="card" id="card-loglevel">
+    <div class="card-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <div class="card-name">Log Level</div>
+      <div class="card-key">0 = errors · 1 = normal · 2 = verbose</div>
+    </div>
+    <div class="spinner"></div>
+    <select class="sel" id="sel-loglevel" onchange="setLogLevel()">
+      <option value="0">0 · errors</option>
+      <option value="1">1 · normal</option>
+      <option value="2">2 · verbose</option>
+    </select>
+  </div>
+</div>
+
+<div class="section-title">service log</div>
+<div class="log-wrap">
+  <div class="log-bar">
+    <button class="fbtn info active"  id="f-info"  onclick="toggleFilter('INFO')">INFO</button>
+    <button class="fbtn warn active"  id="f-warn"  onclick="toggleFilter('WARN')">WARN</button>
+    <button class="fbtn error active" id="f-error" onclick="toggleFilter('ERROR')">ERR</button>
+    <button class="fbtn debug"        id="f-debug" onclick="toggleFilter('DEBUG')">DBG</button>
+    <button class="fbtn" onclick="loadLogs()">↻</button>
+    <button class="fbtn error" onclick="clearLog()">clear</button>
+    <span class="log-size" id="logSize">— B</span>
+  </div>
+  <div class="log-body" id="logBody"><span class="log-empty">loading…</span></div>
+</div>
+
+<div class="section-title">notes</div>
+<div class="note">
+  Configuration lives in <b>/data/adb/dev-options-persist/config</b> and survives module updates.
+  <b>Restore Original</b> puts back the values captured at install time — run it before uninstalling
+  if you want Developer Options visible again.
+</div>
+
+<div class="footer" id="footer">dev-options-persist</div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+var SERVICE_SH = '/data/adb/modules/dev-options-persist/service.sh';
+
+// ── Root bridge ──────────────────────────────────────────────────────────────
+// Managers expose ksu.exec in two shapes: the legacy one-argument form that
+// returns a string, and the callback form ksu.exec(cmd, options, cbName).
+// v3 assumed the first existed; where it does not, every call failed silently
+// and the UI looked alive but did nothing.
+var EXEC_MODE = null;
+var _cbSeq = 0;
+var B64_CMD = 'base64';
+
+function hasBridge() {
+  return typeof ksu !== 'undefined' && ksu && typeof ksu.exec === 'function';
+}
+
+function callbackExec(cmd, timeoutMs) {
+  return new Promise(function (resolve, reject) {
+    var name = '__dop_cb_' + (++_cbSeq) + '_' + Date.now();
+    var settled = false;
+    window[name] = function (errno, stdout, stderr) {
+      if (settled) return;
+      settled = true;
+      try { delete window[name]; } catch (e) { window[name] = undefined; }
+      resolve({
+        errno: typeof errno === 'number' ? errno : 0,
+        stdout: stdout == null ? '' : String(stdout),
+        stderr: stderr == null ? '' : String(stderr)
+      });
+    };
+    try {
+      ksu.exec(cmd, '{}', name);
+    } catch (e) {
+      settled = true;
+      try { delete window[name]; } catch (e2) {}
+      reject(e);
+      return;
+    }
+    setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      try { delete window[name]; } catch (e) {}
+      reject(new Error('exec timeout'));
+    }, timeoutMs || 60000);
+  });
+}
+
+function legacyExec(cmd) {
+  var r = ksu.exec(cmd);
+  var out = typeof r === 'string' ? r : (r && r.stdout) || '';
+  return { errno: 0, stdout: out, stderr: '' };
+}
+
+async function detectExecMode() {
+  if (!hasBridge()) throw new Error('no root bridge');
+  try {
+    var r = await callbackExec('echo dop_ok', 3000);
+    if ((r.stdout || '').indexOf('dop_ok') >= 0) return 'callback';
+  } catch (e) {}
+  try {
+    var l = legacyExec('echo dop_ok');
+    if ((l.stdout || '').indexOf('dop_ok') >= 0) return 'legacy';
+  } catch (e) {}
+  throw new Error('root shell unavailable');
+}
+
+async function rawExec(cmd, timeoutMs) {
+  if (EXEC_MODE === 'callback') return callbackExec(cmd, timeoutMs);
+  if (EXEC_MODE === 'legacy') return legacyExec(cmd);
+  throw new Error('exec not ready');
+}
+
+// Everything is base64-wrapped so multi-line output survives the legacy bridge,
+// which only ever returns the last line.
+async function sh(cmd, timeoutMs) {
+  var res = await rawExec('{ ' + cmd + '; } 2>&1 | ' + B64_CMD + ' | tr -d "\\n\\r"', timeoutMs);
+  return b64ToText((res.stdout || '').trim());
+}
+
+function b64ToText(b64) {
+  if (!b64) return '';
+  try {
+    var bin = atob(b64);
+    var bytes = Uint8Array.from(bin, function (c) { return c.charCodeAt(0); });
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch (e) { return ''; }
+}
+
+function svc(args, timeoutMs) {
+  return sh('sh ' + SERVICE_SH + ' ' + args, timeoutMs);
+}
+
+function parseKV(text) {
+  var out = {};
+  (text || '').split('\n').forEach(function (line) {
+    var eq = line.indexOf('=');
+    if (eq > 0) out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+  });
+  return out;
+}
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+var toastTimer;
+function showToast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.className = 'toast'; }, 2500);
+}
+
+function fatal(msg) {
+  document.body.innerHTML =
+    '<div class="fatal"><b>Dev Options Persist</b><br><br>' + esc(msg) +
+    '<br><br>This WebUI needs a root manager that provides the ksu JavaScript ' +
+    'bridge — KernelSU, SukiSU, APatch or MMRL.</div>';
+}
+
+var DEVICE_NOW = 0;
+function fmtAgo(ts) {
+  var t = parseInt(ts, 10);
+  if (!t) return 'never';
+  var d = (DEVICE_NOW || Math.floor(Date.now() / 1000)) - t;
+  if (d < 0) d = 0;
+  if (d < 5) return 'just now';
+  if (d < 60) return d + 's ago';
+  if (d < 3600) return Math.floor(d / 60) + 'm ago';
+  if (d < 86400) return Math.floor(d / 3600) + 'h ago';
+  return Math.floor(d / 86400) + 'd ago';
+}
+
+function fmtDur(sec) {
+  var s = parseInt(sec, 10) || 0;
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + 'm';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+  return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + 'h';
+}
+
+function fmtBytes(n) {
+  var b = parseInt(n, 10) || 0;
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+// ── Cards ────────────────────────────────────────────────────────────────────
+// The Developer Options card is inverted: the toggle means "hidden".
+var ICONS = {
+  adb_enabled: '<path d="M5 7l3-3M19 7l-3-3"/><path d="M4 10h16v4a8 8 0 0 1-16 0z"/>',
+  development_settings_enabled: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  extended_power_menu: '<path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>',
+  adbinstall: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  adbinput: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+};
+
+var STATUS = {};
+var KEYS = [];
+
+function renderCards(st) {
+  var html = '';
+  KEYS.forEach(function (k) {
+    var cfg = st['CFG_' + k] || '';
+    var live = st['LIVE_' + k] || '';
+    var label = st['LABEL_' + k] || k;
+    var kind = st['KIND_' + k] || '';
+    var target = st['TARGET_' + k] || k;
+    var inverted = (k === 'development_settings_enabled');
+    var skipped = (cfg === 'skip' || cfg === '');
+
+    var checked, valText, valCls;
+    if (skipped) {
+      checked = false;
+      valText = 'UNMANAGED · ' + live;
+      valCls = 'neutral';
+    } else if (inverted) {
+      checked = cfg === '0';
+      valText = (checked ? 'HIDDEN' : 'VISIBLE') + ' · ' + live;
+      valCls = checked ? 'on' : 'off';
+    } else {
+      checked = cfg === '1';
+      valText = (checked ? 'ON' : 'OFF') + ' · ' + live;
+      valCls = checked ? 'on' : 'off';
+    }
+
+    html +=
+      '<div class="card" id="card-' + esc(k) + '">' +
+        '<div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8">' +
+          (ICONS[k] || '') + '</svg></div>' +
+        '<div class="card-body">' +
+          '<div class="card-name">' + esc(label) + '</div>' +
+          '<div class="card-key">' + esc(kind) + ' / ' + esc(target) + '</div>' +
+          '<span class="card-val ' + valCls + '">' + esc(valText) + '</span>' +
+        '</div>' +
+        '<div class="spinner"></div>' +
+        '<div class="toggle-wrap">' +
+          '<label class="toggle' + (inverted ? ' inverted' : '') + '">' +
+            '<input type="checkbox" ' + (checked ? 'checked' : '') +
+              ' onchange="handleToggle(\'' + esc(k) + '\')" id="tog-' + esc(k) + '">' +
+            '<span class="slider"></span>' +
+          '</label>' +
+        '</div>' +
+      '</div>';
+  });
+  document.getElementById('cards').innerHTML = html;
+}
+
+function renderTable(st) {
+  var rows = '';
+  KEYS.forEach(function (k) {
+    var cfg = st['CFG_' + k] || '';
+    var live = st['LIVE_' + k] || '';
+    var match = st['MATCH_' + k] || '';
+    var pill = match === '1'
+      ? '<span class="pill ok">match</span>'
+      : (match === 'skip'
+          ? '<span class="pill skip">unmanaged</span>'
+          : '<span class="pill bad">drift</span>');
+    rows +=
+      '<tr>' +
+        '<td class="name">' + esc(st['LABEL_' + k] || k) + '<span>' + esc(st['TARGET_' + k] || k) + '</span></td>' +
+        '<td>' + esc(cfg === '' ? '—' : cfg) + '</td>' +
+        '<td>' + esc(live === '' ? '—' : live) + '</td>' +
+        '<td>' + pill + '</td>' +
+      '</tr>';
+  });
+  document.getElementById('runtimeBody').innerHTML =
+    rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);">no keys</td></tr>';
+}
+
+async function refreshStatus() {
+  var st;
+  try {
+    st = parseKV(await svc('--status', 30000));
+  } catch (e) {
+    showToast('Status failed: ' + (e.message || e), 'err');
+    return;
+  }
+  if (!st.KEYS) { showToast('service.sh did not answer', 'err'); return; }
+
+  STATUS = st;
+  KEYS = st.KEYS.split(/\s+/).filter(Boolean);
+  DEVICE_NOW = parseInt(st.NOW, 10) || 0;
+
+  var dot = document.getElementById('daemonDot');
+  var lbl = document.getElementById('daemonStatus');
+  var meta = document.getElementById('daemonMeta');
+  var drift = parseInt(st.DRIFT, 10) || 0;
+
+  if (st.DAEMON === 'running' && drift === 0) {
+    dot.className = 'daemon-dot running';
+    lbl.textContent = 'enforcing';
+    lbl.style.color = 'var(--green)';
+  } else if (st.DAEMON === 'running') {
+    dot.className = 'daemon-dot warn';
+    lbl.textContent = 'drift detected';
+    lbl.style.color = 'var(--amber)';
+  } else {
+    dot.className = 'daemon-dot stopped';
+    lbl.textContent = 'daemon stopped';
+    lbl.style.color = 'var(--red)';
+  }
+
+  var uptime = st.STARTED && DEVICE_NOW ? fmtDur(DEVICE_NOW - parseInt(st.STARTED, 10)) : '—';
+  meta.textContent = st.DAEMON === 'running'
+    ? 'pid ' + st.DAEMON_PID + ' · up ' + uptime + ' · last fix ' + fmtAgo(st.LAST_APPLY)
+    : 'press Apply Now to restart it · last fix ' + fmtAgo(st.LAST_APPLY);
+
+  document.getElementById('headerSub').textContent =
+    (st.VERSION || 'v4') + ' · ' + (st.MTIME_GATE === '1' ? 'mtime gate' : 'full poll');
+  document.getElementById('chipProfile').textContent = st.PROFILE || '—';
+  document.getElementById('chipPoll').textContent = (st.POLL_BASE || '?') + '–' + (st.POLL_MAX || '?') + 's';
+  document.getElementById('chipApplies').textContent = st.APPLIES || '0';
+  document.getElementById('chipDrift').textContent = drift;
+
+  var selP = document.getElementById('sel-profile');
+  if (st.PROFILE) selP.value = st.PROFILE;
+  var selL = document.getElementById('sel-loglevel');
+  if (st.LOG_LEVEL) selL.value = st.LOG_LEVEL;
+
+  document.getElementById('btn-restore').disabled = st.HAS_ORIGINAL !== '1';
+  document.getElementById('profileHint').textContent =
+    st.MTIME_GATE === '1'
+      ? 'checks are gated on the settings database mtime'
+      : 'stat unavailable — full poll every ' + (st.POLL_MAX || '?') + 's';
+
+  renderCards(st);
+  renderTable(st);
+  renderLogSize(st.LOG_SIZE);
+}
+
+// ── Toggles ──────────────────────────────────────────────────────────────────
+async function handleToggle(key) {
+  var card = document.getElementById('card-' + key);
+  var tog = document.getElementById('tog-' + key);
+  if (card) card.classList.add('loading');
+
+  var inverted = (key === 'development_settings_enabled');
+  var val = inverted ? (tog.checked ? '0' : '1') : (tog.checked ? '1' : '0');
+
+  try {
+    var out = parseKV(await svc('--config ' + key + ' ' + val, 30000));
+    showToast(out.rc === '0' ? 'Updated' : 'Write failed', out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  } finally {
+    // v3 only cleared this inside refreshAll's success path, so any failure
+    // left the card spinning forever.
+    if (card) card.classList.remove('loading');
+  }
+  await refreshStatus();
+  await loadLogs();
+}
+
+async function setProfile() {
+  var card = document.getElementById('card-profile');
+  card.classList.add('loading');
+  try {
+    var out = parseKV(await svc('--config profile ' + document.getElementById('sel-profile').value, 40000));
+    showToast(out.rc === '0' ? 'Profile updated · active next cycle' : 'Failed',
+              out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  } finally {
+    card.classList.remove('loading');
+  }
+  await refreshStatus();
+}
+
+async function setLogLevel() {
+  var card = document.getElementById('card-loglevel');
+  card.classList.add('loading');
+  try {
+    var out = parseKV(await svc('--config log_level ' + document.getElementById('sel-loglevel').value, 20000));
+    showToast(out.rc === '0' ? 'Log level updated' : 'Failed', out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  } finally {
+    card.classList.remove('loading');
+  }
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+var ACTION_IDS = ['btn-apply', 'btn-daemon', 'btn-restore'];
+
+async function doAction(type) {
+  if (type === 'restore' &&
+      !confirm('Restore the values captured when the module was installed?')) return;
+
+  ACTION_IDS.forEach(function (id) { document.getElementById(id).disabled = true; });
+  try {
+    var out;
+    if (type === 'apply') {
+      out = parseKV(await svc('--apply', 60000));
+      showToast(out.daemon === 'restarted'
+        ? 'Applied · daemon restarted'
+        : 'Applied · ' + (out.applied || '0') + ' correction(s)', 'ok');
+    } else if (type === 'daemon') {
+      await svc('--daemon-stop', 30000);
+      out = parseKV(await svc('--daemon-start', 30000));
+      showToast(out.rc === '0' ? 'Daemon restarted' : 'Daemon failed to start',
+                out.rc === '0' ? 'ok' : 'err');
+    } else if (type === 'restore') {
+      out = parseKV(await svc('--restore', 60000));
+      showToast(out.rc === '0' ? 'Original values restored' : 'No snapshot available',
+                out.rc === '0' ? 'ok' : 'err');
+    }
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  }
+  ACTION_IDS.forEach(function (id) { document.getElementById(id).disabled = false; });
+  await refreshStatus();
+  await loadLogs();
+}
+
+// ── Logs ─────────────────────────────────────────────────────────────────────
+var activeFilters = new Set(['INFO', 'WARN', 'ERROR']);
+var rawLines = [];
+
+function toggleFilter(level) {
+  var ids = { INFO: 'f-info', WARN: 'f-warn', ERROR: 'f-error', DEBUG: 'f-debug' };
+  var btn = document.getElementById(ids[level]);
+  if (activeFilters.has(level)) { activeFilters.delete(level); btn.classList.remove('active'); }
+  else { activeFilters.add(level); btn.classList.add('active'); }
+  renderLogs();
+}
+
+function renderLogSize(bytes) {
+  document.getElementById('logSize').textContent = fmtBytes(bytes);
+}
+
+async function loadLogs() {
+  try {
+    var raw = await svc('--log 300', 30000);
+    rawLines = raw ? raw.split('\n') : [];
+    renderLogs();
+  } catch (e) {
+    document.getElementById('logBody').innerHTML =
+      '<span class="log-empty">could not read the log</span>';
+  }
+}
+
+function renderLogs() {
+  var body = document.getElementById('logBody');
+  if (!rawLines.length) {
+    body.innerHTML = '<span class="log-empty">no log entries</span>';
+    return;
+  }
+  var levels = ['INFO', 'WARN', 'ERROR', 'DEBUG'];
+  var filtered = rawLines.filter(function (line) {
+    var t = line.trim();
+    if (t === '' || t.indexOf('===') === 0) return true;
+    for (var i = 0; i < levels.length; i++) {
+      if (line.indexOf('[' + levels[i] + ']') >= 0) return activeFilters.has(levels[i]);
+    }
+    return true;
+  });
+  if (!filtered.length) {
+    body.innerHTML = '<span class="log-empty">nothing matches the filters</span>';
+    return;
+  }
+  body.innerHTML = filtered.map(function (line) {
+    var cls = 'INFO';
+    if (line.indexOf('[WARN]') >= 0) cls = 'WARN';
+    if (line.indexOf('[ERROR]') >= 0) cls = 'ERROR';
+    if (line.indexOf('[DEBUG]') >= 0) cls = 'DEBUG';
+    return '<span class="log-line ' + cls + '">' + esc(line) + '</span>';
+  }).join('\n');
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { body.scrollTop = body.scrollHeight; });
+  });
+}
+
+async function clearLog() {
+  if (!confirm('Clear the log file?')) return;
+  try {
+    await svc('--clear-log', 20000);
+    rawLines = [];
+    renderLogs();
+    renderLogSize(0);
+    showToast('Log cleared', 'ok');
+  } catch (e) {
+    showToast('Could not clear the log', 'err');
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+var _busy = false;
+async function refreshAll() {
+  if (_busy) return;
+  _busy = true;
+  try {
+    await refreshStatus();
+    await loadLogs();
+  } finally {
+    _busy = false;
+  }
+}
+
+async function init() {
+  var waited = 0;
+  while (!hasBridge() && waited < 8000) {
+    await new Promise(function (r) { setTimeout(r, 250); });
+    waited += 250;
+  }
+  if (!hasBridge()) { fatal('No root bridge found.'); return; }
+
+  try {
+    EXEC_MODE = await detectExecMode();
+  } catch (e) {
+    fatal('Could not open a root shell: ' + (e.message || e));
+    return;
+  }
+
+  try {
+    var probe = await rawExec('sh ' + SERVICE_SH + ' --b64cmd', 15000);
+    var line = (probe.stdout || '').trim().split('\n').pop().trim();
+    if (line) B64_CMD = line;
+  } catch (e) {}
+
+  // Edge-to-edge, but never immersive: the status bar and the navigation
+  // buttons must stay on screen.
+  try { if (ksu.enableEdgeToEdge) ksu.enableEdgeToEdge(); } catch (e) {}
+  try { if (ksu.fullScreen) ksu.fullScreen(false); } catch (e) {}
+
+  await refreshAll();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+
+// One resume handler, not two — v3 registered both focus and visibilitychange
+// and refreshed twice on every return to the app.
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden && EXEC_MODE) refreshStatus();
+});
+
+setInterval(function () {
+  if (!document.hidden && EXEC_MODE && !_busy) refreshStatus();
+}, 30000);
+</script>
+</body>
+</html>
