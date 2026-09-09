@@ -2,6 +2,27 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v4.2
+
+### Added — built-in help page
+
+`webroot/help.html`, reachable from a **HELP** button in the top right of the
+interface. The other modules in this family ship documentation; this one had
+five toggles with names like `persist.security.adbinput` and nowhere explaining
+what they mean.
+
+It covers what the module does, all five managed settings (including which are
+Xiaomi-specific and why the Developer Options toggle is inverted), how the mtime
+gate and backoff keep the daemon cheap, the poll profiles, the config file
+format and the `skip` value, the full `service.sh` command reference, what
+happens on restore and uninstall, troubleshooting, and the file layout.
+
+The back button uses `history.back()` with a fallback to `index.html`, so it
+works whether the manager navigated there from the main page or opened the file
+directly.
+
+---
+
 ## v4.1
 
 ### Fixed — the daemon could die after a change from the WebUI
