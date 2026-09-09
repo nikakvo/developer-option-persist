@@ -99,6 +99,19 @@ apply_all() {
   APPLIED=0
   DRIFT_OK=1
 
+  # The settings provider is gone during shutdown and not yet up early in boot.
+  # A read then returns nothing at all — not "null", which is what an unset
+  # setting looks like. Every write in the pass would fail, and the old code
+  # logged one ERROR per key with an empty "(still )" value, which reads like a
+  # broken module when it is really just a reboot in progress.
+  _aa_probe=$(settings get global adb_enabled 2>/dev/null)
+  if [ -z "$_aa_probe" ]; then
+    log_warn "Settings provider is not responding (shutting down or still booting) — pass skipped"
+    unset _aa_probe
+    return 0
+  fi
+  unset _aa_probe
+
   for _aa_k in $KEYS; do
     eval "_aa_want=\$CFG_$_aa_k"
     case "$_aa_want" in

@@ -39,6 +39,9 @@
     .daemon-label{color:var(--text-dim);font-size:11px;}
     .daemon-status{color:var(--text-hi);font-size:12px;font-weight:600;}
     .daemon-meta{font-size:10px;font-family:var(--mono);color:var(--text-dim);margin-top:2px;}
+    .help-btn{background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text);padding:7px 11px;font-size:11px;font-family:var(--mono);cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:5px;}
+    .help-btn:active{opacity:0.5;}
+    .help-btn svg{width:13px;height:13px;color:var(--amber);}
     .refresh-btn{background:transparent;border:1px solid var(--border2);border-radius:5px;color:var(--text-dim);padding:5px 10px;font-size:11px;cursor:pointer;font-family:var(--mono);flex-shrink:0;}
     .refresh-btn:active{opacity:0.6;}
 
@@ -147,6 +150,14 @@
       <div class="header-sub" id="headerSub">loading…</div>
     </div>
   </div>
+  <button class="help-btn" onclick="openHelp()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    HELP
+  </button>
 </div>
 
 <div class="status-bar">
@@ -715,6 +726,11 @@ async function clearLog() {
   } catch (e) {
     showToast('Could not clear the log', 'err');
   }
+}
+
+// ── Help page ────────────────────────────────────────────────────────────────
+function openHelp() {
+  window.location.href = 'help.html';
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Dev Options Persist — Help</title>
+  <style>
+    :root {
+      --bg:#0a0a08;--bg2:#0f0f0c;--surface:#141410;--surface2:#1a1a15;
+      --border:#252520;--border2:#33332a;--amber:#f5a623;--amber-dim:#f5a62330;
+      --green:#7ecb35;--green-dim:#7ecb3530;--red:#e05c5c;--red-dim:#e05c5c30;
+      --cyan:#4ecdc4;--purple:#b07fff;
+      --text:#b8b89a;--text-dim:#5a5a48;--text-hi:#eeeedd;
+      --mono:ui-monospace,'IBM Plex Mono','Roboto Mono',Menlo,Consolas,monospace;
+      --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    body{
+      background:var(--bg);color:var(--text);font-family:var(--sans);
+      font-size:14px;line-height:1.7;min-height:100vh;
+      padding-bottom:calc(env(safe-area-inset-bottom,0px) + 40px);
+      padding-left:env(safe-area-inset-left,0px);
+      padding-right:env(safe-area-inset-right,0px);
+    }
+    .header{
+      background:var(--bg2);border-bottom:1px solid var(--border);
+      padding:14px 16px;padding-top:calc(env(safe-area-inset-top,0px) + 14px);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      position:sticky;top:0;z-index:10;
+    }
+    .header-left{display:flex;align-items:center;gap:10px;min-width:0;}
+    .logo{width:36px;height:36px;background:linear-gradient(135deg,#1f1e10,#0f0f08);border:1px solid var(--amber);border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px var(--amber-dim);flex-shrink:0;}
+    .logo svg{width:16px;height:16px;}
+    .header-title{font-size:15px;font-weight:700;color:var(--text-hi);}
+    .header-sub{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;}
+    .back-btn{
+      background:transparent;border:1px solid var(--border2);border-radius:6px;
+      color:var(--text);padding:7px 12px;font-size:11px;font-family:var(--mono);
+      cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:5px;
+    }
+    .back-btn:active{opacity:0.5;}
+    .back-btn svg{width:12px;height:12px;}
+
+    .toc{margin:14px 14px 0;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+    .toc-title{font-size:9px;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);margin-bottom:8px;}
+    .toc a{display:block;color:var(--cyan);text-decoration:none;font-size:12px;font-family:var(--mono);padding:3px 0;}
+
+    .sec-title{
+      font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);
+      font-family:var(--mono);padding:26px 16px 8px;
+    }
+    .sec-title::before{content:'// ';color:var(--amber);opacity:0.5;}
+
+    .box{margin:0 14px 10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;}
+    .box p{margin-bottom:10px;}
+    .box p:last-child{margin-bottom:0;}
+    .box h3{font-size:13px;color:var(--text-hi);font-weight:600;margin:14px 0 6px;}
+    .box h3:first-child{margin-top:0;}
+    .box ul{margin:8px 0 10px 18px;}
+    .box li{margin-bottom:5px;}
+    strong{color:var(--text-hi);}
+    code{font-family:var(--mono);font-size:12px;color:var(--amber);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;word-break:break-all;}
+
+    pre{
+      background:var(--bg2);border:1px solid var(--border);border-radius:8px;
+      padding:12px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+      font-family:var(--mono);font-size:11.5px;line-height:1.65;color:var(--text);
+      margin:8px 0;
+    }
+    pre .cm{color:var(--text-dim);}
+    pre .kw{color:var(--green);}
+
+    table{width:100%;border-collapse:collapse;font-size:11.5px;font-family:var(--mono);margin:6px 0;}
+    th{text-align:left;padding:8px 8px 8px 0;color:var(--text-dim);font-weight:400;text-transform:uppercase;letter-spacing:0.06em;font-size:9px;border-bottom:1px solid var(--border);}
+    td{padding:8px 8px 8px 0;border-bottom:1px solid var(--border);vertical-align:top;}
+    tr:last-child td{border-bottom:none;}
+    td:first-child{color:var(--text-hi);white-space:nowrap;padding-right:14px;}
+
+    .note{border-left:2px solid var(--amber);background:var(--amber-dim);padding:10px 12px;border-radius:0 6px 6px 0;margin:10px 0;font-size:13px;}
+    .note.warn{border-left-color:var(--red);background:var(--red-dim);}
+    .note.ok{border-left-color:var(--green);background:var(--green-dim);}
+
+    .footer{text-align:center;padding:28px 16px 8px;font-size:10px;font-family:var(--mono);color:var(--text-dim);}
+    .footer a{color:var(--amber);text-decoration:none;}
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <path d="M8 21h8M12 17v4M7 8l3 3-3 3M13 14h4"/>
+      </svg>
+    </div>
+    <div>
+      <div class="header-title">Help</div>
+      <div class="header-sub">dev options persist</div>
+    </div>
+  </div>
+  <button class="back-btn" onclick="goBack()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+      <polyline points="15 18 9 12 15 6"/>
+    </svg>
+    BACK
+  </button>
+</div>
+
+<div class="toc">
+  <div class="toc-title">contents</div>
+  <a href="#what">1 · What this module does</a>
+  <a href="#settings">2 · The five settings</a>
+  <a href="#how">3 · How enforcement works</a>
+  <a href="#profiles">4 · Poll profiles &amp; battery</a>
+  <a href="#ui">5 · The interface</a>
+  <a href="#config">6 · Configuration file</a>
+  <a href="#cli">7 · Command line</a>
+  <a href="#uninstall">8 · Restore &amp; uninstall</a>
+  <a href="#trouble">9 · Troubleshooting</a>
+  <a href="#files">10 · File layout</a>
+</div>
+
+<!-- 1 -->
+<div class="sec-title" id="what">1 · what this module does</div>
+<div class="box">
+  <p>Turning Developer Options off in Android's Settings also turns off everything inside it — USB debugging goes with it. This module keeps the switches you care about in the state you chose, while Developer Options themselves stay hidden from the Settings menu.</p>
+  <p>The result: the developer menu is not visible, but ADB keeps working.</p>
+  <div class="note">
+    A background daemon watches for anything that changes those values — you, an app, an OTA, a settings reset — and puts them back.
+  </div>
+</div>
+
+<!-- 2 -->
+<div class="sec-title" id="settings">2 · the five settings</div>
+<div class="box">
+  <table>
+    <tr><th>setting</th><th>where it lives</th></tr>
+    <tr><td>USB Debugging</td><td>global / <code>adb_enabled</code></td></tr>
+    <tr><td>Developer Options</td><td>global / <code>development_settings_enabled</code></td></tr>
+    <tr><td>Extended Power Menu</td><td>secure / <code>extended_power_menu</code></td></tr>
+    <tr><td>Install via USB</td><td>prop / <code>persist.security.adbinstall</code></td></tr>
+    <tr><td>USB Debugging (Security)</td><td>prop / <code>persist.security.adbinput</code></td></tr>
+  </table>
+
+  <h3>The inverted one</h3>
+  <p><strong>Developer Options</strong> is the only toggle whose switch means <em>hidden</em>. Green means the menu is hidden from Settings — which is the point of the module. The runtime table shows the raw value, where <code>0</code> is hidden.</p>
+
+  <h3>Xiaomi-specific</h3>
+  <p>The last three exist on Xiaomi / HyperOS. On another manufacturer they either do nothing or never appear, and the runtime table will show a permanent drift. Set them to <code>skip</code> and the daemon will leave them alone.</p>
+</div>
+
+<!-- 3 -->
+<div class="sec-title" id="how">3 · how enforcement works</div>
+<div class="box">
+  <p>Naively, a daemon like this polls every few seconds and re-reads everything. That is what earlier versions did, and it cost roughly a million process spawns per day — enough to keep the CPU from settling into deep sleep around the clock.</p>
+
+  <h3>The mtime gate</h3>
+  <p>Any change to an Android setting rewrites <code>/data/system/users/0/settings_global.xml</code> or <code>settings_secure.xml</code>. A single <code>stat</code> of those two files, plus the module's own config file, produces a fingerprint. If the fingerprint is unchanged, nothing could have changed, and the daemon does not query the settings provider at all.</p>
+  <p>An idle pass is four processes: <code>sleep</code>, one <code>stat</code>, and two <code>getprop</code> calls for the properties, which the settings databases do not cover.</p>
+
+  <h3>Backoff</h3>
+  <p>After a few quiet passes the interval stretches to the profile maximum, and it snaps back to the minimum the moment something changes.</p>
+
+  <h3>Safety net</h3>
+  <p>A full verification runs at least every few minutes regardless, in case a ROM writes settings somewhere the gate cannot see.</p>
+
+  <div class="note ok">
+    Idle cost in the balanced profile: about four process spawns per minute, and no write to <code>module.prop</code> unless the status text actually changes.
+  </div>
+</div>
+
+<!-- 4 -->
+<div class="sec-title" id="profiles">4 · poll profiles &amp; battery</div>
+<div class="box">
+  <table>
+    <tr><th>profile</th><th>interval</th><th>full check</th></tr>
+    <tr><td>fast</td><td>5 → 15 s</td><td>every 60 s</td></tr>
+    <tr><td>balanced</td><td>15 → 60 s</td><td>every 5 min</td></tr>
+    <tr><td>battery</td><td>30 → 300 s</td><td>every 15 min</td></tr>
+  </table>
+  <p><strong>Balanced</strong> is the default and is the right answer for almost everyone. The interval only decides how quickly a change is undone; it does not affect whether it is undone.</p>
+  <p>Pick <strong>fast</strong> if you are actively toggling things and want them corrected within seconds. Pick <strong>battery</strong> if the phone sits idle for long stretches.</p>
+  <div class="note">
+    A profile change does not restart the daemon. The config file is part of its fingerprint, so it picks up the new intervals on its own next pass — which on the battery profile can take up to five minutes.
+  </div>
+</div>
+
+<!-- 5 -->
+<div class="sec-title" id="ui">5 · the interface</div>
+<div class="box">
+  <h3>Status bar</h3>
+  <ul>
+    <li><strong>enforcing</strong> — daemon alive, every managed value matches</li>
+    <li><strong>drift detected</strong> — daemon alive, something does not match yet</li>
+    <li><strong>daemon stopped</strong> — nothing is being enforced</li>
+  </ul>
+  <p>Liveness is read from <code>/proc/&lt;pid&gt;</code>, so Doze and suspend cannot produce a false reading.</p>
+
+  <h3>Runtime table</h3>
+  <p>Per setting: what the config asks for, what the system actually reports, and whether they match. <span style="color:var(--purple)">unmanaged</span> means the key is set to <code>skip</code>.</p>
+
+  <h3>Actions</h3>
+  <ul>
+    <li><strong>Apply Now</strong> — enforce immediately, and restart the daemon if it is not running</li>
+    <li><strong>Restart Daemon</strong> — stop and start it</li>
+    <li><strong>Restore Original</strong> — put back the values captured when the module was installed</li>
+  </ul>
+</div>
+
+<!-- 6 -->
+<div class="sec-title" id="config">6 · configuration file</div>
+<div class="box">
+  <p><code>/data/adb/dev-options-persist/config</code> — outside the module directory, so it survives module updates.</p>
+  <pre><span class="cm"># 1 = force on, 0 = force off, skip = leave this setting alone</span>
+adb_enabled=1
+development_settings_enabled=0
+extended_power_menu=1
+adbinstall=1
+adbinput=1
+
+<span class="cm"># profile: fast | balanced | battery</span>
+profile=balanced
+<span class="cm"># log_level: 0 = errors only, 1 = normal, 2 = verbose</span>
+log_level=1</pre>
+  <p>Everything here is editable from the interface. If you edit the file by hand instead, the daemon notices on its next pass — no restart needed.</p>
+  <div class="note">
+    <code>skip</code> is the value to use for a setting your device does not have. It is not the same as <code>0</code>: <code>0</code> means "force it off", <code>skip</code> means "do not touch it at all".
+  </div>
+</div>
+
+<!-- 7 -->
+<div class="sec-title" id="cli">7 · command line</div>
+<div class="box">
+  <p>Everything the interface does goes through <code>service.sh</code>, so you can do all of it from a root shell.</p>
+  <pre>S=/data/adb/modules/dev-options-persist/service.sh
+
+sh $S --status                  <span class="cm"># config, live values, daemon state</span>
+sh $S --apply                   <span class="cm"># enforce now</span>
+sh $S --restore                 <span class="cm"># values captured at install time</span>
+
+sh $S --config adb_enabled 1    <span class="cm"># 1 | 0 | skip</span>
+sh $S --config profile battery  <span class="cm"># fast | balanced | battery</span>
+sh $S --config log_level 2      <span class="cm"># 0 | 1 | 2</span>
+
+sh $S --daemon-start
+sh $S --daemon-stop
+
+sh $S --log 200
+sh $S --clear-log</pre>
+  <p><code>--status</code> prints plain <code>key=value</code> lines, so it is easy to use in a script:</p>
+  <pre>sh $S --status | grep '^DRIFT='
+sh $S --status | grep '^LIVE_adb_enabled='</pre>
+</div>
+
+<!-- 8 -->
+<div class="sec-title" id="uninstall">8 · restore &amp; uninstall</div>
+<div class="box">
+  <p>The installer snapshots every managed value <em>before</em> the module touches anything. Removing the module restores that snapshot.</p>
+  <div class="note warn">
+    Developer Options are always restored as <strong>visible</strong>, whatever the snapshot says. Hidden Developer Options is the one state you cannot get out of once the module that hid them is gone.
+  </div>
+  <p>Uninstall cleanup also runs again after <code>sys.boot_completed</code>, because <code>uninstall.sh</code> can execute long before <code>system_server</code> exists and a direct attempt would silently do nothing.</p>
+  <p>To check the result before committing, press <strong>Restore Original</strong> in the interface first.</p>
+</div>
+
+<!-- 9 -->
+<div class="sec-title" id="trouble">9 · troubleshooting</div>
+<div class="box">
+  <h3>Daemon shows as stopped</h3>
+  <p>Press <strong>Apply Now</strong> — it restarts the daemon as well as enforcing. Check the log for why it exited.</p>
+  <p>A daemon started from this interface is a child of your root manager's shell, so it used to die whenever Android froze or killed the manager. It now moves itself into the root cgroup and pins <code>oom_score_adj</code>, which makes it behave like a boot-started service.</p>
+
+  <h3>Drift that never clears</h3>
+  <p>The live value refuses to accept the config value. Set the log level to verbose and press Apply Now — a failed write is logged as an error together with the value that was actually read back.</p>
+
+  <h3>extended_power_menu always drifts</h3>
+  <p>That setting only exists on Xiaomi / HyperOS. Set it to <code>skip</code>.</p>
+
+  <h3>Interface is blank or shows a red box</h3>
+  <p>Your root manager did not provide a working <code>ksu</code> JavaScript bridge. Open the module through KernelSU, SukiSU, APatch or MMRL.</p>
+
+  <h3>The log warns that "settings" is unavailable</h3>
+  <p>Nothing can be enforced without the <code>settings</code> command. This should never happen on a booted device.</p>
+</div>
+
+<!-- 10 -->
+<div class="sec-title" id="files">10 · file layout</div>
+<div class="box">
+  <pre>/data/adb/modules/dev-options-persist/
+├── service.sh        <span class="cm">boot flow, daemon, command interface</span>
+├── sh/common.sh      <span class="cm">paths, logging, config, key table</span>
+├── customize.sh      <span class="cm">installer, captures the original values</span>
+├── uninstall.sh      <span class="cm">restores them</span>
+└── webroot/          <span class="cm">this interface</span>
+
+/data/adb/dev-options-persist/     <span class="cm">(mode 0700)</span>
+├── config            <span class="cm">your settings</span>
+├── original          <span class="cm">values from before installation</span>
+├── state             <span class="cm">daemon pid, counters</span>
+├── daemon.pid
+└── logs/service.log  <span class="cm">rotates at 128 KB</span></pre>
+  <p>Nothing mutable lives in the module directory, because a module update replaces it wholesale.</p>
+</div>
+
+<div class="footer">
+  dev options persist · <a href="https://github.com/nikakvo/developer-option-persist" target="_blank">GitHub →</a>
+</div>
+
+<script>
+  function goBack() {
+    // history.back() is right when the user arrived from index.html. Some
+    // managers open a webroot file directly with no history to go back to, so
+    // fall through to an explicit navigation if nothing happened.
+    var left = false;
+    window.addEventListener('pagehide', function () { left = true; });
+
+    if (window.history.length > 1) {
+      window.history.back();
+      setTimeout(function () {
+        if (!left) window.location.href = 'index.html';
+      }, 300);
+    } else {
+      window.location.href = 'index.html';
+    }
+  }
+</script>
+</body>
+</html>

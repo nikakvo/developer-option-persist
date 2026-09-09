@@ -1,7 +1,7 @@
 id=dev-options-persist
 name=Developer Options Persist
-version=v4.1
-versionCode=5
+version=v4.2
+versionCode=6
 author=Tears Burn
 description=Keeps USB debugging, Install via USB and extended power menu enabled while hiding Developer Options
 updateJson=https://raw.githubusercontent.com/nikakvo/developer-option-persist/main/update.json
