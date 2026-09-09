@@ -1,6 +1,6 @@
 {
-  "version": "v4.1",
-  "versionCode": 5,
-  "zipUrl": "https://github.com/nikakvo/developer-option-persist/releases/download/v4.1/developer-option-persist-v4.1.zip",
+  "version": "v5",
+  "versionCode": 6,
+  "zipUrl": "https://github.com/nikakvo/developer-option-persist/releases/download/v5/developer-option-persist-v5.zip",
   "changelog": "https://raw.githubusercontent.com/nikakvo/developer-option-persist/main/CHANGELOG.md"
 }
