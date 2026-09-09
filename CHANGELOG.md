@@ -2,7 +2,7 @@
 
 All notable changes to Developer Options Persist are documented here.
 
-## v4.2
+## v5
 
 ### Added — built-in help page
 
