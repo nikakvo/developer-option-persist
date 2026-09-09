@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android" />
   <img src="https://img.shields.io/badge/root-KernelSU%20%7C%20SukiSU-orange?style=flat-square" />
-  <img src="https://img.shields.io/badge/version-v1-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/version-v4-blue?style=flat-square" />
   <img src="https://img.shields.io/badge/arch-ARM64-lightgrey?style=flat-square" />
 </p>
 
