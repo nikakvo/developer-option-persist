@@ -2,6 +2,31 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v4.1
+
+### Fixed — the daemon could die after a change from the WebUI
+
+`--config profile` restarted the daemon so it would pick up the new intervals.
+That restart was spawned from the manager app's root shell, so the new daemon
+inherited the app's cgroup: when Android froze or killed the manager, it took
+the daemon with it. A healthy boot-started daemon was being replaced by a
+fragile one.
+
+- A profile change no longer restarts anything. The config file is part of the
+  daemon's mtime fingerprint, so it reloads the new intervals on its own next
+  pass.
+- Any daemon that *is* started from the WebUI now calls `daemon_detach()` first:
+  it moves itself into the root cgroup (`cpuctl`, `cpuset`, `stune`, `blkio`,
+  `memcg`, unified `cgroup.procs`) and sets `oom_score_adj` to -1000, so it
+  behaves like a boot-started service instead of an app child.
+- **Apply Now** restarts the daemon if it is not running, and says so.
+- The status line tells you what to press when the daemon is stopped.
+
+The "daemon stopped" indicator itself was correct — that is v4's honest PID
+check working. v3 would have shown green because a config file existed.
+
+---
+
 ## v4
 
 ### Fixed — battery
