@@ -56,6 +56,8 @@ The last three are Xiaomi / HyperOS specific. On other devices set them to `skip
 3. Reboot
 4. Open the module UI from the manager
 
+<img width="300" alt="Trust-User-Certs" src="https://raw.githubusercontent.com/nikakvo/developer-option-persist/main/DevOprion.jpg" />
+
 ---
 
 ## Battery
