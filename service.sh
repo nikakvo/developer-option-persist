@@ -55,21 +55,35 @@ check_keys() {
     fi
 
     if ! read_live "$_ck_k"; then
-      # During a reboot the settings service goes away before the daemon
-      # is killed; that is expected and not worth a warning.
-      if [ "$_ck_prev" != unread ]; then
-        if [ -n "$(getprop sys.shutdown.requested 2>/dev/null)" ]; then
-          log_debug "$_ck_k: settings service gone — shutting down"
-        else
-          log_warn "$_ck_k: settings service not answering — will retry"
-        fi
+      # During a reboot the services go away before the daemon is killed;
+      # that is expected, and the rest of the pass is skipped.
+      if system_down; then
+        log_debug "$_ck_k: system shutting down — checks skipped"
+        eval "RES_$_ck_k=unread"
+        break
       fi
+      [ "$_ck_prev" = unread ] ||
+        log_warn "$_ck_k: settings service not answering — will retry"
       eval "RES_$_ck_k=unread"
       continue
     fi
     if [ "$LIVE" = "$_ck_want" ]; then
       eval "RES_$_ck_k=ok"
       continue
+    fi
+    # A value that looks wrong while the system is going down is not trusted:
+    # an unset-looking property then usually just means the property service
+    # has stopped.
+    if system_down; then
+      log_debug "$_ck_k: system shutting down — not correcting"
+      break
+    fi
+
+    # A key added in a later version has no snapshot yet: take it now, right
+    # before the module changes that value for the first time.
+    if [ -f "$ORIGINAL_FILE" ] && ! grep -q "^$_ck_k=" "$ORIGINAL_FILE" 2>/dev/null; then
+      printf '%s=%s\n' "$_ck_k" "$LIVE" >>"$ORIGINAL_FILE"
+      log_info "Captured original $_ck_k=${LIVE:-<unset>}"
     fi
 
     _ck_old=${LIVE:-<unset>}
@@ -79,9 +93,31 @@ check_keys() {
       APPLIED=$((APPLIED + 1))
       eval "RES_$_ck_k=ok"
     else
+      # The chosen mock location app was uninstalled: Android has already
+      # dropped its permission, so the choice is released instead of being
+      # reported as a failure forever.
+      if [ "$_ck_k" = mock_location_app ] && [ "$(pkg_state "$_ck_want")" = missing ]; then
+        if write_cfg mock_location_app skip; then
+          CFG_mock_location_app=skip
+          eval "RES_$_ck_k=skip"
+          log_info "mock_location_app: $_ck_want was uninstalled — no longer managed"
+        fi
+        continue
+      fi
+      # Unreadable after the write: the service went away in between. That
+      # is "not answering", not a failed write.
+      if ! read_live "$_ck_k"; then
+        if system_down; then
+          log_debug "$_ck_k: system shutting down — checks skipped"
+        elif [ "$_ck_prev" != unread ]; then
+          log_warn "$_ck_k: settings service not answering — will retry"
+        fi
+        eval "RES_$_ck_k=unread"
+        continue
+      fi
       # Logged once per failure streak, not on every retry.
       [ "$_ck_prev" = fail ] ||
-        log_error "$_ck_k could not be set to $_ck_want (still ${LIVE:-unreadable})"
+        log_error "$_ck_k could not be set to $_ck_want (still ${LIVE:-<unset>})"
       eval "RES_$_ck_k=fail"
     fi
   done
@@ -164,8 +200,8 @@ on_config_change() {
     log_info "Engine setting changed to $CFG_engine — switching"
     RESELECT=1
   fi
-  DG=1 DS=1 DP=1
-  DUE_G=0 DUE_S=0 DUE_P=0
+  DG=1 DS=1 DP=1 DA=1
+  DUE_G=0 DUE_S=0 DUE_P=0 DUE_A=0
   unset _occ_engine
 }
 
@@ -175,8 +211,9 @@ process_dirty() {
   now_up
   if [ "$NOW" -ge "$NEXT_FULL" ]; then
     check_keys "$KEYS" && {
-      DG=0 DS=0 DP=0
+      DG=0 DS=0 DP=0 DA=0
       DUE_G=$((NOW + CD_FAST)) DUE_S=$((NOW + CD_SECURE)) DUE_P=$((NOW + CD_FAST))
+      DUE_A=$((NOW + CD_FAST))
       NEXT_FULL=$((NOW + FULL))
       log_debug "Full verification"
     }
@@ -191,6 +228,9 @@ process_dirty() {
   if [ "$DP" -eq 1 ] && [ "$NOW" -ge "$DUE_P" ]; then
     check_keys "$KEYS_PROP" && { DP=0; DUE_P=$((NOW + CD_FAST)); }
   fi
+  if [ "$DA" -eq 1 ] && [ "$NOW" -ge "$DUE_A" ]; then
+    check_keys "$KEYS_APPOP" && { DA=0; DUE_A=$((NOW + CD_FAST)); }
+  fi
   return 0
 }
 
@@ -200,6 +240,7 @@ next_timeout() {
   [ "$DG" -eq 1 ] && [ $((DUE_G - NOW)) -lt "$T" ] && T=$((DUE_G - NOW))
   [ "$DS" -eq 1 ] && [ $((DUE_S - NOW)) -lt "$T" ] && T=$((DUE_S - NOW))
   [ "$DP" -eq 1 ] && [ $((DUE_P - NOW)) -lt "$T" ] && T=$((DUE_P - NOW))
+  [ "$DA" -eq 1 ] && [ $((DUE_A - NOW)) -lt "$T" ] && T=$((DUE_A - NOW))
   [ "$T" -gt "$1" ] && T=$1
   [ "$T" -lt 1 ] && T=1
 }
@@ -217,7 +258,7 @@ start_watcher() {
   # every read into an instant EOF. Death is detected by pid_alive instead.
   exec 3<>"$FIFO"
   # shellcheck disable=SC2086
-  $CMD_INOTIFYD - "$SETTINGS_DIR:y" "$PROP_DIR:y" "$DATA_DIR:wy" \
+  $CMD_INOTIFYD - "$SETTINGS_DIR:y" "$PROP_DIR:y" "$SYSTEM_DIR:y" "$DATA_DIR:wy" \
     >&3 2>/dev/null </dev/null &
   WPID=$!
   echo "$WPID" >"$WATCHER_PID_FILE" 2>/dev/null
@@ -247,7 +288,7 @@ restart_watcher() {
   stop_watcher
   start_watcher || return 1
   # Anything could have changed while it was down.
-  DG=1 DS=1 DP=1
+  DG=1 DS=1 DP=1 DA=1
   return 0
 }
 
@@ -266,7 +307,7 @@ loop_events() {
     WAKE=0
     if read -t "$T" -r _ev _dir _name <&3; then
       case "$_ev" in
-        *o* | *x*) DG=1 DS=1 DP=1 ;; # queue overflow / watch lost
+        *o* | *x*) DG=1 DS=1 DP=1 DA=1 ;; # queue overflow / watch lost
       esac
       case "$_dir" in
         "$SETTINGS_DIR")
@@ -276,6 +317,12 @@ loop_events() {
           esac ;;
         "$PROP_DIR")
           [ "$_name" = persistent_properties ] && DP=1 ;;
+        "$SYSTEM_DIR")
+          # AppOps are saved about 10 s after a change; packages.xml moves
+          # when an app is installed, updated or removed.
+          case "$_name" in
+            appops_accesses.xml | appops.xml | packages.xml) DA=1 ;;
+          esac ;;
         "$DATA_DIR")
           [ "$_name" = config ] && on_config_change ;;
       esac
@@ -295,19 +342,38 @@ loop_events() {
 }
 
 # ── Poll engine ───────────────────────────────────────────────────────────────
+# poll_fingerprint — "<file> <mtime>" per existing file. Parsed by name, so
+# a missing file cannot shift the others.
 poll_fingerprint() {
   [ -n "$CMD_STAT" ] || return 0
   # shellcheck disable=SC2086
-  $CMD_STAT -c %Y "$SETTINGS_GLOBAL_XML" "$SETTINGS_SECURE_XML" \
-    "$PROP_FILE" "$CONFIG_FILE" 2>/dev/null | tr '\n' ' '
+  $CMD_STAT -c '%n %Y' "$SETTINGS_GLOBAL_XML" "$SETTINGS_SECURE_XML" \
+    "$PROP_FILE" "$CONFIG_FILE" "$SYSTEM_DIR/appops_accesses.xml" \
+    "$SYSTEM_DIR/appops.xml" "$PACKAGES_XML" 2>/dev/null
+}
+
+# read_fingerprint — sets F_G F_S F_P F_C F_A from poll_fingerprint.
+read_fingerprint() {
+  F_G="" F_S="" F_P="" F_C="" F_A=""
+  while read -r _rf_n _rf_t; do
+    case "$_rf_n" in
+      "$SETTINGS_GLOBAL_XML") F_G=$_rf_t ;;
+      "$SETTINGS_SECURE_XML") F_S=$_rf_t ;;
+      "$PROP_FILE") F_P=$_rf_t ;;
+      "$CONFIG_FILE") F_C=$_rf_t ;;
+      *) F_A="$F_A$_rf_t." ;;
+    esac
+  done <<FP
+$(poll_fingerprint)
+FP
+  unset _rf_n _rf_t
 }
 
 loop_poll() {
   write_state "MODE=poll" "INTERVAL=$POLL" "WATCHER_PID=0"
   log_info "Poll engine running (every ${POLL}s, full check every ${FULL}s)"
-  # shellcheck disable=SC2046
-  set -- $(poll_fingerprint)
-  _pg=$1 _ps=$2 _pp=$3 _pc=$4
+  read_fingerprint
+  _pg=$F_G _ps=$F_S _pp=$F_P _pc=$F_C _pa=$F_A
 
   while :; do
     sleep "$POLL" &
@@ -316,27 +382,27 @@ loop_poll() {
     SLEEP_PID=""
 
     if [ -n "$CMD_STAT" ]; then
-      # shellcheck disable=SC2046
-      set -- $(poll_fingerprint)
-      [ "$1" != "$_pg" ] && DG=1
-      [ "$2" != "$_ps" ] && DS=1
-      [ "$3" != "$_pp" ] && DP=1
-      if [ "$4" != "$_pc" ] || [ "$WAKE" -eq 1 ]; then
+      read_fingerprint
+      [ "$F_G" != "$_pg" ] && DG=1
+      [ "$F_S" != "$_ps" ] && DS=1
+      [ "$F_P" != "$_pp" ] && DP=1
+      [ "$F_A" != "$_pa" ] && DA=1
+      if [ "$F_C" != "$_pc" ] || [ "$WAKE" -eq 1 ]; then
         WAKE=0
         on_config_change
         write_state "INTERVAL=$POLL"
       fi
-      _pg=$1 _ps=$2 _pp=$3 _pc=$4
+      _pg=$F_G _ps=$F_S _pp=$F_P _pc=$F_C _pa=$F_A
     else
       [ "$WAKE" -eq 1 ] && {
         WAKE=0
         on_config_change
       }
       load_config
-      DG=1 DS=1 DP=1
+      DG=1 DS=1 DP=1 DA=1
     fi
     # No cooldowns here: the tick already is one.
-    DUE_G=0 DUE_S=0 DUE_P=0
+    DUE_G=0 DUE_S=0 DUE_P=0 DUE_A=0
     process_dirty
     [ "$RESELECT" -eq 1 ] && return 0
   done
@@ -363,8 +429,8 @@ daemon_main() {
 
   # Everything is checked once at start.
   now_up
-  DG=0 DS=0 DP=0
-  DUE_G=0 DUE_S=0 DUE_P=0
+  DG=0 DS=0 DP=0 DA=0
+  DUE_G=0 DUE_S=0 DUE_P=0 DUE_A=0
   NEXT_FULL=0
   process_dirty
   if [ "$APPLIED" -gt 0 ]; then
@@ -444,7 +510,7 @@ cmd_config() {
   _cc_ok=0
   case " $KEYS " in
     *" $1 "*)
-      case "$2" in 0 | 1 | skip) _cc_ok=1 ;; esac ;;
+      valid_value "$1" "$2" && _cc_ok=1 ;;
     *)
       case "$1:$2" in
         profile:fast | profile:balanced | profile:battery) _cc_ok=1 ;;
@@ -453,6 +519,13 @@ cmd_config() {
       esac ;;
   esac
   if [ "$_cc_ok" -ne 1 ]; then
+    echo "rc=1"
+    return 1
+  fi
+  if [ "$1" = mock_location_app ] && [ "$2" != skip ] &&
+    [ "$(pkg_state "$2")" = missing ]; then
+    log_warn "mock_location_app: $2 is not installed — not set"
+    echo "error=not-installed"
     echo "rc=1"
     return 1
   fi
@@ -593,6 +666,42 @@ cmd_status() {
   unset _st_k _st_want _st_live _st_ok _drift _dstate _mode _wpid
 }
 
+# cmd_mock_apps — the WebUI picker. Answers at once from the cache; when the
+# installed apps have changed, a scan is started in the background and
+# SCAN=running tells the WebUI to ask again shortly. The configured package
+# is reported separately (CONFIG=), never as an APP= line.
+cmd_mock_apps() {
+  load_config
+  if mock_holders; then
+    printf 'HOLDER=%s\n' "$MOCK"
+  else
+    printf 'HOLDER=unreadable\n'
+    MOCK=""
+  fi
+  printf 'CONFIG=%s\n' "$CFG_mock_location_app"
+
+  if mock_cache_fresh; then
+    printf 'SCAN=fresh\n'
+  else
+    mock_scan_running ||
+      spawn_detached $DAEMON_SH "$MODDIR/service.sh" --mock-scan
+    printf 'SCAN=running\n'
+  fi
+  {
+    mock_cached_apps
+    _ma_ifs=$IFS
+    IFS=,
+    for _ma_p in $MOCK; do
+      [ "$_ma_p" = none ] || printf '%s\n' "$_ma_p"
+    done
+    IFS=$_ma_ifs
+  } | sort -u | while IFS= read -r _ma_p; do
+    valid_pkg "$_ma_p" && printf 'APP=%s\n' "$_ma_p"
+  done
+  printf 'rc=0\n'
+  unset _ma_p _ma_ifs
+}
+
 cmd_log() {
   _l="${1:-300}"
   case "$_l" in
@@ -651,6 +760,8 @@ case "$1" in
   --log) cmd_log "$2" ;;
   --clear-log) cmd_clear_log ;;
   --b64cmd) cmd_b64cmd ;;
+  --mock-apps) cmd_mock_apps ;;
+  --mock-scan) mock_scan ;;
   --apply) cmd_apply ;;
   --restore) cmd_restore ;;
   --config) cmd_config "$2" "$3" ;;

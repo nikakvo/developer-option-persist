@@ -44,6 +44,28 @@ settings_ready() {
   return 1
 }
 
+# restore_mock <pkg[,pkg]|none> — the mock location app from before install.
+restore_mock() {
+  cur=$(appops query-op android:mock_location allow 2>&1)
+  case "$cur" in *Failure* | *Exception* | *rror*) return 1 ;; esac
+  for p in $cur; do
+    case "$p" in *.*[A-Za-z0-9]) ;; *) continue ;; esac
+    case ",$1," in
+      *",$p,"*) ;;
+      *) appops set "$p" android:mock_location deny >/dev/null 2>&1 ;;
+    esac
+  done
+  if [ "$1" != none ]; then
+    old_ifs=$IFS
+    IFS=,
+    for p in $1; do
+      appops set "$p" android:mock_location allow >/dev/null 2>&1
+    done
+    IFS=$old_ifs
+  fi
+  ulog "restored mock location app: $1"
+}
+
 restore() {
   if [ ! -f "$ORIGINAL_FILE" ]; then
     settings put global development_settings_enabled 1 >/dev/null 2>&1 &&
@@ -57,6 +79,8 @@ restore() {
         case "$v" in '' | [0-9] | [0-9][0-9]) ;; *) continue ;; esac ;;
       adb_enabled | development_settings_enabled | extended_power_menu)
         case "$v" in null) ;; '' | *[!0-9]*) continue ;; esac ;;
+      mock_location_app)
+        case "$v" in none) ;; '' | *[!A-Za-z0-9._,]*) continue ;; esac ;;
       *) continue ;;
     esac
     if [ "$k" = development_settings_enabled ]; then
@@ -78,6 +102,8 @@ restore() {
       adbinstall | adbinput)
         setprop "persist.security.$k" "$v" 2>/dev/null &&
           ulog "restored persist.security.$k=${v:-<unset>}" ;;
+      mock_location_app)
+        restore_mock "$v" ;;
     esac
   done <"$ORIGINAL_FILE"
 }

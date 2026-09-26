@@ -2,6 +2,64 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v7
+
+### Added — mock location app
+
+The mock location app ("Select mock location app" in Developer Options) can
+now be chosen from the WebUI and is kept in place like the other settings.
+
+- It is an AppOp, not a setting: the module does what Settings does — the
+  chosen app gets `allow`, every other holder `deny`. Mocking works with
+  Developer Options hidden.
+- New config key `mock_location_app` (a package name or `skip`); **not managed
+  by default**, so updating changes nothing until an app is picked.
+- The picker lists every installed app that requests
+  `ACCESS_MOCK_LOCATION`, whether or not it was ever selected, so a newly
+  installed app shows up on its own. HyperOS 3 lists requested permissions
+  only in single-package dumps (~60 ms each), so the scan is incremental and
+  runs in the background: one `pm list packages -3 --show-versioncode` call,
+  then only new or updated apps are dumped. The WebUI gets the cached list at
+  once and fills in the rest when the scan is done.
+- Detection: AppOps are saved to `/data/system/appops_accesses.xml` about ten
+  seconds after a change, and `packages.xml` moves on every install, update or
+  removal. The event engine watches both (the directory is otherwise quiet);
+  the poll engine checks them too.
+- Uninstalling the chosen app releases the choice: Android drops the app's
+  permission, and the module switches the setting back to `skip` and logs it.
+  This only happens when the package manager answers and confirms the package
+  is gone, never during boot or shutdown.
+- A package that is not installed cannot be set (`--config` refuses it) and
+  never takes the permission away from the current app.
+- Restore and uninstall put the previous mock location app back (or none).
+  For values a newer version starts managing, the original is captured right
+  before the module first changes them.
+
+### Fixed
+
+- **Errors in the log during a reboot.** Only a reboot through the framework
+  (`sys.shutdown.requested`) was recognised. A root manager reboots with the
+  `reboot` command, which only sets `sys.powerctl`; the stopping property
+  service then made the Xiaomi properties read as unset, the correction failed
+  and was logged as an ERROR. Shutdown is now also recognised by
+  `sys.powerctl` and by `sys.boot_completed` no longer reading `1`; while it
+  lasts nothing is corrected and nothing is logged.
+- A value that cannot be read back right after a write is reported as "not
+  answering" (one warning), not as a failed write.
+
+### Changed
+
+- README and help page state what the module was tested on (Poco F6 Pro,
+  Xiaomi.eu ROM, HyperOS 3 / Android 16, SukiSU-Ultra) and what may differ
+  on other devices and ROMs.
+- Stopping the daemon polls in 0.2 s steps: about 0.2 s instead of just over
+  a second.
+- The WebUI shows the status first and fills the picker afterwards, and only
+  rebuilds it when its contents change.
+- Package names are shortened in the runtime table (full name on tap).
+
+---
+
 ## v6
 
 ### Changed — event-driven enforcement

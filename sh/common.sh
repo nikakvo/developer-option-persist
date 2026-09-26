@@ -37,6 +37,9 @@ LEGACY_RUNTIME="$DATA_DIR/state $DATA_DIR/daemon.pid $DATA_DIR/locks" # v4-v5
 
 MODULE_PROP="$MODDIR/module.prop"
 
+SYSTEM_DIR="/data/system"
+APPOPS_FILES="appops_accesses.xml appops.xml" # Android 15+ / older
+PACKAGES_XML="$SYSTEM_DIR/packages.xml"
 SETTINGS_DIR="/data/system/users/0"
 SETTINGS_GLOBAL_XML="$SETTINGS_DIR/settings_global.xml"
 SETTINGS_SECURE_XML="$SETTINGS_DIR/settings_secure.xml"
@@ -49,10 +52,11 @@ LOG_KEEP_LINES=400
 CR=$(printf '\r')
 
 # ── Managed keys ──────────────────────────────────────────────────────────────
-KEYS="adb_enabled development_settings_enabled extended_power_menu adbinstall adbinput"
+KEYS="adb_enabled development_settings_enabled extended_power_menu adbinstall adbinput mock_location_app"
 KEYS_GLOBAL="adb_enabled development_settings_enabled"
 KEYS_SECURE="extended_power_menu"
 KEYS_PROP="adbinstall adbinput"
+KEYS_APPOP="mock_location_app"
 META_KEYS="profile log_level engine"
 
 key_kind() {
@@ -60,6 +64,7 @@ key_kind() {
     adb_enabled | development_settings_enabled) printf 'global' ;;
     extended_power_menu) printf 'secure' ;;
     adbinstall | adbinput) printf 'prop' ;;
+    mock_location_app) printf 'appop' ;;
     *) printf 'unknown' ;;
   esac
 }
@@ -68,6 +73,7 @@ key_target() {
   case "$1" in
     adbinstall) printf 'persist.security.adbinstall' ;;
     adbinput) printf 'persist.security.adbinput' ;;
+    mock_location_app) printf 'android:mock_location' ;;
     *) printf '%s' "$1" ;;
   esac
 }
@@ -79,8 +85,109 @@ key_label() {
     extended_power_menu) printf 'Extended Power Menu' ;;
     adbinstall) printf 'Install via USB' ;;
     adbinput) printf 'USB Debugging (Security)' ;;
+    mock_location_app) printf 'Mock Location App' ;;
     *) printf '%s' "$1" ;;
   esac
+}
+
+# valid_pkg <name> — an Android package name (a.b, letters, digits, _ and .).
+valid_pkg() {
+  case "$1" in
+    '' | .* | *. | *..* | *[!A-Za-z0-9._]*) return 1 ;;
+    *.*) return 0 ;;
+  esac
+  return 1
+}
+
+# valid_value <key> <value> — what the config accepts for a managed key.
+valid_value() {
+  case "$1:$2" in
+    *:skip) return 0 ;;
+    mock_location_app:*) valid_pkg "$2" ;;
+    *:0 | *:1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# mock_holders — packages whose mock_location AppOp is "allow", comma
+# separated, "none" if there are none. Settings grants it to exactly one app.
+# Returns 1 if the AppOps service did not answer.
+mock_holders() {
+  _mh_out=$(appops query-op android:mock_location allow 2>&1)
+  case "$_mh_out" in
+    *Failure* | *Exception* | *rror*)
+      unset _mh_out
+      return 1 ;;
+  esac
+  MOCK=""
+  for _mh_p in $_mh_out; do
+    valid_pkg "$_mh_p" && MOCK="${MOCK:+$MOCK,}$_mh_p"
+  done
+  [ -n "$MOCK" ] || MOCK=none
+  unset _mh_out _mh_p
+  return 0
+}
+
+# set_mock <pkg[,pkg]|none> — what Settings does when a mock location app is
+# picked: every other holder is set to deny, the chosen one to allow.
+set_mock() {
+  # Never take the permission away from the current app for a package that
+  # cannot receive it (not installed, typo in a hand-edited config).
+  if [ "$1" != none ]; then
+    _sm_ifs=$IFS
+    IFS=,
+    for _sm_p in $1; do
+      case "$(appops get "$_sm_p" MOCK_LOCATION 2>&1)" in
+        *rror* | *Failure* | *Exception*)
+          IFS=$_sm_ifs
+          unset _sm_p _sm_ifs
+          return 1 ;;
+      esac
+    done
+    IFS=$_sm_ifs
+  fi
+  mock_holders || return 1
+  _sm_ifs=$IFS
+  IFS=,
+  for _sm_p in $MOCK; do
+    [ "$_sm_p" = none ] && continue
+    case ",$1," in
+      *",$_sm_p,"*) ;;
+      *) appops set "$_sm_p" android:mock_location deny >/dev/null 2>&1 ;;
+    esac
+  done
+  if [ "$1" != none ]; then
+    for _sm_p in $1; do
+      appops set "$_sm_p" android:mock_location allow >/dev/null 2>&1
+    done
+  fi
+  IFS=$_sm_ifs
+  unset _sm_p _sm_ifs
+  return 0
+}
+
+# system_down — the system is shutting down or not fully up: a reboot through
+# the framework (sys.shutdown.requested), a `reboot` command (sys.powerctl),
+# or property reads that no longer answer (sys.boot_completed not 1). Checked
+# only when a value is unreadable or wrong, so it costs nothing normally.
+system_down() {
+  [ "$(getprop sys.boot_completed 2>/dev/null)" = 1 ] || return 0
+  [ -n "$(getprop sys.powerctl 2>/dev/null)" ] && return 0
+  [ -n "$(getprop sys.shutdown.requested 2>/dev/null)" ] && return 0
+  return 1
+}
+
+# pkg_state <pkg> — prints "installed", "missing", or "unknown" when the
+# package manager itself did not answer (early boot, shutdown). Only
+# "missing" is ever acted on.
+pkg_state() {
+  if [ -n "$(pm path "$1" 2>/dev/null)" ]; then
+    printf 'installed'
+  elif [ -n "$(pm path android 2>/dev/null)" ]; then
+    printf 'missing'
+  else
+    printf 'unknown'
+  fi
 }
 
 # read_live <key> — sets LIVE. Returns 1 when the value could not be read.
@@ -99,6 +206,13 @@ read_live() {
       LIVE=$(getprop persist.security.adbinstall 2>/dev/null) ;;
     adbinput)
       LIVE=$(getprop persist.security.adbinput 2>/dev/null) ;;
+    mock_location_app)
+      if mock_holders; then
+        LIVE=$MOCK
+        return 0
+      fi
+      LIVE=""
+      return 1 ;;
     *)
       LIVE=""
       return 1 ;;
@@ -136,6 +250,7 @@ set_live() {
       fi ;;
     adbinstall) setprop persist.security.adbinstall "$2" 2>/dev/null ;;
     adbinput) setprop persist.security.adbinput "$2" 2>/dev/null ;;
+    mock_location_app) set_mock "$2" ;;
   esac
 }
 
@@ -316,8 +431,8 @@ kill_verified() {
   pid_is "$1" "$2" || return 1
   kill "$1" 2>/dev/null
   _kv=0
-  while pid_alive "$1" && [ "$_kv" -lt "$3" ]; do
-    sleep 1
+  while pid_alive "$1" && [ "$_kv" -lt $(($3 * 5)) ]; do
+    sleep 0.2
     _kv=$((_kv + 1))
   done
   pid_alive "$1" && kill -9 "$1" 2>/dev/null
@@ -372,6 +487,8 @@ development_settings_enabled=0
 extended_power_menu=1
 adbinstall=1
 adbinput=1
+# mock_location_app: package name of the mock location app, or skip
+mock_location_app=skip
 
 # profile: fast | balanced | battery  (reaction time / battery trade-off)
 profile=balanced
@@ -393,6 +510,8 @@ ensure_config() {
   grep -q '^profile=' "$CONFIG_FILE" || echo "profile=balanced" >>"$CONFIG_FILE"
   grep -q '^log_level=' "$CONFIG_FILE" || echo "log_level=1" >>"$CONFIG_FILE"
   grep -q '^engine=' "$CONFIG_FILE" || echo "engine=auto" >>"$CONFIG_FILE"
+  grep -q '^mock_location_app=' "$CONFIG_FILE" ||
+    echo "mock_location_app=skip" >>"$CONFIG_FILE"
   chmod 600 "$CONFIG_FILE" 2>/dev/null
   return 0
 }
@@ -452,10 +571,11 @@ load_config() {
       esac
       case " $KEYS " in
         *" $_lc_k "*)
-          case "$_lc_v" in
-            0 | 1 | skip) eval "CFG_$_lc_k=\$_lc_v" ;;
-            *) CFG_BAD="$CFG_BAD $_lc_k=$_lc_v" ;;
-          esac
+          if valid_value "$_lc_k" "$_lc_v"; then
+            eval "CFG_$_lc_k=\$_lc_v"
+          else
+            CFG_BAD="$CFG_BAD $_lc_k=$_lc_v"
+          fi
           continue ;;
       esac
       case "$_lc_k" in
@@ -585,7 +705,7 @@ capture_originals() {
     if read_live "$_co_k"; then
       printf '%s=%s\n' "$_co_k" "$LIVE" >>"$_co_tmp"
       case "$_co_k" in
-        adbinstall | adbinput) ;;
+        adbinstall | adbinput | mock_location_app) ;;
         *) _co_settings_ok=1 ;;
       esac
     fi
@@ -627,6 +747,9 @@ restore_originals() {
     grep -q "^$_ro_k=" "$ORIGINAL_FILE" 2>/dev/null || continue
     _ro_v=$(read_original "$_ro_k")
     case "$_ro_k:$_ro_v" in
+      mock_location_app:none) ;;
+      mock_location_app:*)
+        case "$_ro_v" in '' | *[!A-Za-z0-9._,]*) continue ;; esac ;;
       adbinstall:* | adbinput:*)
         case "$_ro_v" in '' | [0-9] | [0-9][0-9]) ;; *) continue ;; esac ;;
       *:null) ;;
@@ -765,6 +888,113 @@ wait_for_settings() {
   done
   unset _ws
   return 1
+}
+
+# ── Mock location app scan ────────────────────────────────────────────────────
+# Which installed apps request ACCESS_MOCK_LOCATION (the ones Settings offers,
+# whether or not one is selected)?
+#
+# HyperOS 3 lists requested permissions only in single-package dumps, so the
+# answer costs one `dumpsys package <pkg>` (~60 ms) per app. The scan is
+# therefore incremental: `pm list packages -3 --show-versioncode` gives every
+# user app with its version in one call, and only apps that are new or whose
+# version changed are dumped again. Results are kept per package in
+# MOCK_CACHE ("<pkg> <versionCode> <0|1>"); MOCK_STAMP holds the packages.xml
+# mtime:size the cache matches, which makes the freshness check one stat.
+# Mock location apps are never system apps.
+MOCK_CACHE="$RUN_DIR/mock-scan"
+MOCK_STAMP="$RUN_DIR/mock-scan.stamp"
+MOCK_SCAN_LOCK="$LOCK_DIR/mock-scan"
+
+packages_stamp() {
+  [ -n "$CMD_STAT" ] && $CMD_STAT -c '%Y:%s' "$PACKAGES_XML" 2>/dev/null
+}
+
+# mock_cache_fresh — the cache matches the installed apps.
+mock_cache_fresh() {
+  [ -f "$MOCK_CACHE" ] && [ -f "$MOCK_STAMP" ] || return 1
+  _mcf=""
+  read -r _mcf <"$MOCK_STAMP" 2>/dev/null
+  [ -n "$_mcf" ] && [ "$_mcf" = "$(packages_stamp)" ]
+}
+
+# mock_cached_apps — candidates from the cache, one per line (may be stale).
+mock_cached_apps() {
+  [ -f "$MOCK_CACHE" ] || return 0
+  while read -r _mca_p _ _mca_m; do
+    [ "$_mca_m" = 1 ] && printf '%s\n' "$_mca_p"
+  done <"$MOCK_CACHE"
+  unset _mca_p _mca_m
+}
+
+# mock_scan — bring the cache up to date. Returns 1 if another scan is running.
+mock_scan() {
+  mkdir -p "$RUN_DIR" "$LOCK_DIR" 2>/dev/null
+  mkdir "$MOCK_SCAN_LOCK" 2>/dev/null || {
+    # A scan is running, unless its owner is gone.
+    _ms_o=""
+    read -r _ms_o <"$MOCK_SCAN_LOCK/pid" 2>/dev/null
+    if [ -n "$_ms_o" ] && pid_alive "$_ms_o"; then
+      unset _ms_o
+      return 1
+    fi
+    rm -rf "$MOCK_SCAN_LOCK"
+    mkdir "$MOCK_SCAN_LOCK" 2>/dev/null || return 1
+  }
+  echo "$$" >"$MOCK_SCAN_LOCK/pid"
+
+  _ms_stamp=$(packages_stamp)
+  _ms_list=$(pm list packages -3 --show-versioncode 2>/dev/null)
+  if [ -z "$_ms_list" ]; then
+    # Package manager not answering — keep the old cache.
+    rm -rf "$MOCK_SCAN_LOCK"
+    unset _ms_stamp _ms_list _ms_o
+    return 0
+  fi
+
+  _ms_tmp="$MOCK_CACHE.tmp.$$"
+  _ms_new=0
+  : >"$_ms_tmp"
+  # Lines look like "package:com.example versionCode:123".
+  printf '%s\n' "$_ms_list" | while read -r _ms_a _ms_b; do
+    _ms_p=${_ms_a#package:}
+    valid_pkg "$_ms_p" || continue
+    _ms_v=${_ms_b#versionCode:}
+    [ -n "$_ms_v" ] || _ms_v="?"
+    _ms_hit=""
+    if [ "$_ms_v" != "?" ] && [ -f "$MOCK_CACHE" ]; then
+      while read -r _ms_cp _ms_cv _ms_cm; do
+        if [ "$_ms_cp" = "$_ms_p" ] && [ "$_ms_cv" = "$_ms_v" ]; then
+          _ms_hit=$_ms_cm
+          break
+        fi
+      done <"$MOCK_CACHE"
+    fi
+    if [ -z "$_ms_hit" ]; then
+      if dumpsys package "$_ms_p" 2>/dev/null |
+        grep -c 'android\.permission\.ACCESS_MOCK_LOCATION' | grep -qv '^0$'; then
+        _ms_hit=1
+      else
+        _ms_hit=0
+      fi
+    fi
+    printf '%s %s %s\n' "$_ms_p" "$_ms_v" "$_ms_hit"
+  done >"$_ms_tmp"
+
+  if [ -s "$_ms_tmp" ]; then
+    mv -f "$_ms_tmp" "$MOCK_CACHE"
+    printf '%s\n' "$_ms_stamp" >"$MOCK_STAMP"
+  fi
+  rm -f "$_ms_tmp" 2>/dev/null
+  rm -rf "$MOCK_SCAN_LOCK"
+  unset _ms_stamp _ms_list _ms_tmp _ms_new _ms_o
+  return 0
+}
+
+mock_scan_running() {
+  _msr=""
+  [ -d "$MOCK_SCAN_LOCK" ] && read -r _msr <"$MOCK_SCAN_LOCK/pid" 2>/dev/null
+  [ -n "$_msr" ] && pid_alive "$_msr"
 }
 
 cleanup_legacy_runtime() {

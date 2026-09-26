@@ -3,11 +3,14 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android" />
   <img src="https://img.shields.io/badge/root-KernelSU%20%7C%20SukiSU-orange?style=flat-square" />
-  <img src="https://img.shields.io/badge/version-v6-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/version-v7-blue?style=flat-square" />
   <img src="https://img.shields.io/badge/arch-ARM64-lightgrey?style=flat-square" />
 </p>
 
-A Magisk / KernelSU / APatch module that keeps USB debugging, Install via USB and the extended power menu enabled **while Developer Options stay hidden** in Settings.
+A Magisk / KernelSU / APatch module that keeps USB debugging, Install via USB, the extended power menu and your mock location app in place **while Developer Options stay hidden** in Settings.
+
+> **Tested on:** Poco F6 Pro · Xiaomi.eu ROM (HyperOS 3, Android 16) · SukiSU-Ultra.
+> Other devices and ROMs are untested. The module relies on how Android stores settings, properties and AppOps, which manufacturers are free to change — see [Compatibility](#compatibility) before reporting that something does not work.
 
 ---
 
@@ -15,7 +18,7 @@ A Magisk / KernelSU / APatch module that keeps USB debugging, Install via USB an
 
 Turning Developer Options off in Android's Settings also turns off everything inside it — USB debugging goes with it. This module keeps the switches you care about in the state you chose and puts Developer Options back out of sight, so the menu is hidden but ADB keeps working.
 
-It enforces five values:
+It enforces these values:
 
 | Setting | Where it lives |
 |---|---|
@@ -24,8 +27,13 @@ It enforces five values:
 | Extended Power Menu | `secure / extended_power_menu` |
 | Install via USB | `persist.security.adbinstall` |
 | USB Debugging (Security) | `persist.security.adbinput` |
+| Mock Location App | AppOp `android:mock_location` |
 
-The last three are Xiaomi / HyperOS specific. On other devices set them to `skip` in the config or leave them — they simply have no effect.
+Extended Power Menu and the two `persist.security.*` properties are Xiaomi / HyperOS specific. On other devices set them to `skip` in the config or leave them — they simply have no effect.
+
+### Mock location app
+
+Choosing a *mock location app* in Developer Options is not a setting but an AppOp: the chosen app gets `allow`, every other one `deny`. The module does the same, so you can pick the app from the WebUI while Developer Options stay hidden, and it is put back if anything changes it. The picker lists every installed app that asks for `ACCESS_MOCK_LOCATION`, whether or not it was ever selected, so a newly installed app appears on its own. Not managed by default.
 
 ---
 
@@ -35,6 +43,7 @@ The last three are Xiaomi / HyperOS specific. On other devices set them to `skip
 - **Profiles** — fast, balanced or battery; **engine** — events or timed checks. Both switchable from the WebUI, effective immediately.
 - **Web UI** — per-setting toggles with the live value next to each, a runtime table, a filterable service log, Apply / Restart / Restore actions and a built-in help page.
 - **Clean uninstall** — the values present before installation are snapshotted and restored when the module is removed; Developer Options are always left visible.
+- **Mock location app** — pick it from the WebUI without showing Developer Options; kept in place like everything else.
 - **Per-key `skip`** — leave any setting unmanaged.
 - **Configuration survives module updates.**
 - **Logging** with timestamps and rotation.
@@ -46,6 +55,22 @@ The last three are Xiaomi / HyperOS specific. On other devices set them to `skip
 - Magisk, KernelSU, SukiSU-Ultra or APatch
 - Android 8+ (anything with `cmd settings`)
 - **The WebUI needs a root manager that provides the `ksu` JavaScript bridge** — KernelSU, SukiSU, APatch or MMRL. Plain Magisk has no built-in WebUI; the module works there, but the interface is only reachable through MMRL.
+
+---
+
+## Compatibility
+
+Developed and tested on **one device**: Poco F6 Pro with the **Xiaomi.eu ROM** (HyperOS 3, Android 16), rooted with **SukiSU-Ultra**. Everything in this README describes behaviour verified there.
+
+On other devices and ROMs it may work fully, partly, or not at all:
+
+- **Extended Power Menu, Install via USB and USB Debugging (Security)** exist only on Xiaomi / HyperOS. Elsewhere set them to `skip`.
+- **USB Debugging and Developer Options** are standard Android settings and are the most likely to work anywhere.
+- **The event engine** depends on Android saving settings and properties through a temporary file and a rename. If a ROM does it differently, the module falls back to timed checks (the header then says *poll engine*).
+- **The mock location app** depends on AppOps and on `dumpsys` output, both of which vary between Android versions and manufacturers.
+- **Magisk and APatch** are supported by the installer but have not been tested on the reference device.
+
+If something does not work on your device, open an issue with your device, ROM, Android version, root manager, and the output of `sh /data/adb/modules/dev-options-persist/service.sh --status` and the service log.
 
 ---
 
@@ -64,7 +89,7 @@ The last three are Xiaomi / HyperOS specific. On other devices set them to `skip
 
 v3 ran a fixed 3-second loop — about a million process spawns and 28,800 `module.prop` writes per day. v4 and v5 gated the checks on the settings files' modification time, but HyperOS rewrites `settings_secure.xml` every few seconds on its own, so in practice the gate kept opening.
 
-v6 does not poll. Android saves settings by writing `settings_*.xml.new` and renaming it into place, and init does the same with `/data/property/persistent_properties`. One busybox `inotifyd` watches those directories; the daemon reads its events with the shell's built-in `read` and checks only the keys that live in the file that changed.
+v6 does not poll. Android saves settings by writing `settings_*.xml.new` and renaming it into place, and init does the same with `/data/property/persistent_properties`. One busybox `inotifyd` watches those directories (plus `/data/system` for `appops_accesses.xml` and `packages.xml`, used by the mock location app); the daemon reads its events with the shell's built-in `read` and checks only the keys that live in the file that changed.
 
 | | v3 | v5 | v6 (event engine) |
 |---|---|---|---|
@@ -94,13 +119,14 @@ development_settings_enabled=0
 extended_power_menu=1
 adbinstall=1
 adbinput=1
+mock_location_app=skip        # or a package name, e.g. com.example.app
 
 profile=balanced
 log_level=1
 engine=auto
 ```
 
-Each managed key takes `1` (force on), `0` (force off) or `skip` (leave it alone). Everything is editable from the WebUI; edit the file directly if you prefer — the daemon picks the change up immediately. CRLF line endings, extra spaces and trailing `# comments` are tolerated; invalid values are ignored with a warning and the key is treated as `skip`.
+Each managed key takes `1` (force on), `0` (force off) or `skip` (leave it alone); `mock_location_app` takes a package name or `skip`. Everything is editable from the WebUI; edit the file directly if you prefer — the daemon picks the change up immediately. CRLF line endings, extra spaces and trailing `# comments` are tolerated; invalid values are ignored with a warning and the key is treated as `skip`.
 
 ---
 
@@ -117,6 +143,8 @@ sh $S --restore                 # put back the values captured at install time, 
 sh $S --config adb_enabled 1    # 1 | 0 | skip
 sh $S --config profile battery  # fast | balanced | battery
 sh $S --config engine poll      # auto | poll
+sh $S --config mock_location_app com.example.app   # or skip
+sh $S --mock-apps               # installed apps that can be the mock location app
 sh $S --config log_level 2      # 0 | 1 | 2
 sh $S --daemon-start
 sh $S --daemon-stop
@@ -128,7 +156,7 @@ sh $S --clear-log
 
 ## Uninstalling
 
-Removing the module restores the values captured when it was installed: settings that did not exist are deleted again and properties that were unset are cleared. Developer Options are always restored as **visible**, because that is the one state you cannot undo yourself once the module that hid them is gone.
+Removing the module restores the values captured when it was installed: settings that did not exist are deleted again, properties that were unset are cleared, and the mock location app goes back to what it was (or none). Developer Options are always restored as **visible**, because that is the one state you cannot undo yourself once the module that hid them is gone.
 
 `uninstall.sh` runs early in boot, before the settings service exists, so the settings part is repeated once the service answers.
 
@@ -140,6 +168,12 @@ To preview the result, use **Restore Original** in the WebUI. It pauses enforcem
 
 **The header says "poll engine" although Engine is auto**
 `inotifyd` is missing or kept exiting and the daemon fell back to timed checks. Enforcement still works; the log has the reason.
+
+**The mock location app went back to "not managed"**
+The chosen app was uninstalled; Android dropped its permission and the module released the choice (logged). Reinstall the app and pick it again. A package that is not installed cannot be picked.
+
+**My location app is not in the picker**
+Only apps that request `android.permission.ACCESS_MOCK_LOCATION` can be selected — the same rule Settings uses. LSPosed-based spoofers do not need it.
 
 **The daemon shows as stopped**
 Press Apply Now or Restart Daemon in the UI, or `sh service.sh --daemon-start`. Check the log for why it exited.

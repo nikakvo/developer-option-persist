@@ -133,6 +133,9 @@
     .toast.err{border-color:rgba(224,92,92,0.3);color:var(--red);}
     .footer{text-align:center;padding:24px 16px 8px;font-size:10px;font-family:var(--mono);color:var(--text-dim);}
     .fatal{margin:40px 14px;padding:18px;background:var(--red-dim);border:1px solid rgba(224,92,92,0.35);border-radius:10px;color:var(--red);font-family:var(--mono);font-size:11px;line-height:1.7;}
+    #sel-mock{max-width:48%;text-overflow:ellipsis;}
+    .pill{white-space:nowrap;}
+    td.pkg{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   </style>
 </head>
 <body>
@@ -180,6 +183,24 @@
 
 <div class="section-title">settings</div>
 <div class="cards" id="cards"></div>
+<div class="cards" style="margin-top:10px;">
+  <div class="card" id="card-mock">
+    <div class="card-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8">
+        <path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <div class="card-name">Mock Location App</div>
+      <div class="card-key">appop / android:mock_location</div>
+      <span class="card-val neutral" id="mockVal">—</span>
+    </div>
+    <div class="spinner"></div>
+    <select class="sel" id="sel-mock" onchange="setMock()">
+      <option value="skip">not managed</option>
+    </select>
+  </div>
+</div>
 
 <div class="section-title">runtime</div>
 <div class="table-wrap">
@@ -462,6 +483,7 @@ var KEYS = [];
 function renderCards(st) {
   var html = '';
   KEYS.forEach(function (k) {
+    if (k === 'mock_location_app') return; // has its own card
     var cfg = st['CFG_' + k] || '';
     var live = st['LIVE_' + k] || '';
     var label = st['LABEL_' + k] || k;
@@ -511,11 +533,19 @@ function renderCards(st) {
   document.getElementById('cards').innerHTML = html;
 }
 
+// Package names are long; the table shows the last part, the full name is
+// in the tooltip.
+function shortPkg(v) {
+  if (!v || v.indexOf('.') < 0) return v;
+  return v.split(',').map(function (p) { return '…' + p.split('.').pop(); }).join(', ');
+}
+
 function renderTable(st) {
   var rows = '';
   KEYS.forEach(function (k) {
     var cfg = st['CFG_' + k] || '';
     var live = st['LIVE_' + k] || '';
+    var isPkg = (k === 'mock_location_app');
     var match = st['MATCH_' + k] || '';
     var pill = match === '1'
       ? '<span class="pill ok">match</span>'
@@ -527,8 +557,11 @@ function renderTable(st) {
     rows +=
       '<tr>' +
         '<td class="name">' + esc(st['LABEL_' + k] || k) + '<span>' + esc(st['TARGET_' + k] || k) + '</span></td>' +
-        '<td>' + esc(cfg === '' ? '—' : cfg) + '</td>' +
-        '<td>' + esc(live === '' ? '—' : live) + '</td>' +
+        (isPkg
+          ? '<td class="pkg" title="' + esc(cfg) + '">' + esc(shortPkg(cfg)) + '</td>' +
+            '<td class="pkg" title="' + esc(live) + '">' + esc(shortPkg(live)) + '</td>'
+          : '<td>' + esc(cfg === '' ? '—' : cfg) + '</td>' +
+            '<td>' + esc(live === '' ? '—' : live) + '</td>') +
         '<td>' + pill + '</td>' +
       '</tr>';
   });
@@ -616,8 +649,88 @@ async function refreshStatus() {
       : 'inotifyd not found — timed checks only';
 
   renderCards(st);
+  renderMock(st);
   renderTable(st);
   renderLogSize(st.LOG_SIZE);
+}
+
+// ── Mock location app ────────────────────────────────────────────────────────
+var MOCK_APPS = [];
+var MOCK_LOADED = false;
+var MOCK_SIG = '';
+
+function renderMock(st) {
+  var cfg = st.CFG_mock_location_app || 'skip';
+  var live = st.LIVE_mock_location_app || '';
+  var badge = document.getElementById('mockVal');
+  var liveText = live === 'unreadable' ? 'N/A' : (live === 'none' ? 'NONE' : live);
+  // Once the scan has run, a configured app that is not in it has been
+  // uninstalled (or no longer asks for the permission).
+  var missing = cfg !== 'skip' && MOCK_LOADED && MOCK_APPS.indexOf(cfg) < 0;
+  if (cfg === 'skip') {
+    badge.textContent = 'UNMANAGED · ' + liveText;
+    badge.className = 'card-val neutral';
+  } else if (missing) {
+    badge.textContent = 'NOT INSTALLED · ' + cfg;
+    badge.className = 'card-val off';
+  } else {
+    badge.textContent = liveText;
+    badge.className = 'card-val ' + (st.MATCH_mock_location_app === '1' ? 'on' : 'neutral');
+  }
+
+  var opts = ['skip'].concat(MOCK_APPS);
+  if (cfg !== 'skip' && opts.indexOf(cfg) < 0) opts.push(cfg);
+  // The current holder is offered too, even before the scan has finished.
+  if (live && live !== 'none' && live !== 'unreadable') {
+    live.split(',').forEach(function (p) { if (opts.indexOf(p) < 0) opts.push(p); });
+  }
+  // Rebuilt only when something changed, so an open picker does not flicker.
+  var sig = opts.join('|') + '#' + cfg + '#' + MOCK_LOADED + '#' + missing;
+  var sel = document.getElementById('sel-mock');
+  if (sig !== MOCK_SIG) {
+    MOCK_SIG = sig;
+    sel.innerHTML = opts.map(function (p) {
+      var label = p === 'skip' ? 'not managed'
+        : (p === cfg && missing ? p + ' (not installed)' : p);
+      return '<option value="' + esc(p) + '">' + esc(label) + '</option>';
+    }).join('') + (MOCK_LOADED ? '' : '<option disabled>scanning apps…</option>');
+  }
+  sel.value = cfg;
+}
+
+// Answers from the cache at once. While the module rescans the installed
+// apps in the background (SCAN=running), ask again every two seconds.
+var mockTimer = null;
+async function loadMockApps() {
+  var fresh = true;
+  try {
+    var out = await svc('--mock-apps', 30000);
+    MOCK_APPS = out.split('\n').filter(function (l) { return l.indexOf('APP=') === 0; })
+                   .map(function (l) { return l.slice(4).trim(); }).filter(Boolean);
+    fresh = parseKV(out).SCAN !== 'running';
+  } catch (e) { MOCK_APPS = []; }
+  MOCK_LOADED = fresh;
+  if (STATUS.KEYS) renderMock(STATUS);
+  clearTimeout(mockTimer);
+  if (!fresh) mockTimer = setTimeout(loadMockApps, 2000);
+}
+
+async function setMock() {
+  var card = document.getElementById('card-mock');
+  var val = document.getElementById('sel-mock').value;
+  card.classList.add('loading');
+  try {
+    var out = parseKV(await svc('--config mock_location_app ' + val, 30000));
+    showToast(out.rc === '0' ? (val === 'skip' ? 'Mock app not managed' : 'Mock app set')
+              : (out.error === 'not-installed' ? 'That app is not installed' : 'Failed'),
+              out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  } finally {
+    card.classList.remove('loading');
+  }
+  await refreshStatus();
+  await loadLogs();
 }
 
 // ── Toggles ──────────────────────────────────────────────────────────────────
@@ -805,8 +918,11 @@ async function refreshAll() {
   if (_busy) return;
   _busy = true;
   try {
+    // Status first: the app scan can take a few seconds when the list of
+    // installed apps has changed since the last one.
     await refreshStatus();
     await loadLogs();
+    await loadMockApps();
   } finally {
     _busy = false;
   }

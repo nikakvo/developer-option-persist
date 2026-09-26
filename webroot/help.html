@@ -110,7 +110,7 @@
 <div class="toc">
   <div class="toc-title">contents</div>
   <a href="#what">1 · What this module does</a>
-  <a href="#settings">2 · The five settings</a>
+  <a href="#settings">2 · The settings</a>
   <a href="#how">3 · How enforcement works</a>
   <a href="#profiles">4 · Profiles &amp; battery</a>
   <a href="#ui">5 · The interface</a>
@@ -129,10 +129,13 @@
   <div class="note">
     A background daemon watches for anything that changes those values — you, an app, an OTA, a settings reset — and puts them back.
   </div>
+  <div class="note warn">
+    Tested on a <strong>Poco F6 Pro</strong> with the <strong>Xiaomi.eu ROM</strong> (HyperOS 3, Android 16) and SukiSU-Ultra only. Other devices and ROMs may behave differently — the Xiaomi-specific settings in particular. If the header shows <em>poll engine</em>, change detection fell back to timed checks on your ROM.
+  </div>
 </div>
 
 <!-- 2 -->
-<div class="sec-title" id="settings">2 · the five settings</div>
+<div class="sec-title" id="settings">2 · the settings</div>
 <div class="box">
   <table>
     <tr><th>setting</th><th>where it lives</th></tr>
@@ -141,10 +144,15 @@
     <tr><td>Extended Power Menu</td><td>secure / <code>extended_power_menu</code></td></tr>
     <tr><td>Install via USB</td><td>prop / <code>persist.security.adbinstall</code></td></tr>
     <tr><td>USB Debugging (Security)</td><td>prop / <code>persist.security.adbinput</code></td></tr>
+    <tr><td>Mock Location App</td><td>appop / <code>android:mock_location</code></td></tr>
   </table>
 
   <h3>The inverted one</h3>
   <p><strong>Developer Options</strong> is the only toggle whose switch means <em>hidden</em>. Green means the menu is hidden from Settings — which is the point of the module. The runtime table shows the raw value, where <code>0</code> is hidden.</p>
+
+  <h3>Mock location app</h3>
+  <p>The app Android lets fake your location — what Developer Options calls <em>Select mock location app</em>. It is not a setting but an AppOp: the chosen app gets <code>allow</code>, every other one <code>deny</code>, exactly as Settings does it. Picking the app in this interface is the same as picking it in Developer Options, and works while they are hidden.</p>
+  <p>The picker lists every installed app that asks for the mock location permission, whether or not it has ever been selected, so a newly installed app shows up on its own. It is <strong>not managed</strong> by default.</p>
 
   <h3>Xiaomi-specific</h3>
   <p>The last three exist on Xiaomi / HyperOS. On another manufacturer they either do nothing or never appear, and the runtime table will show a permanent drift. Set them to <code>skip</code> and the daemon will leave them alone.</p>
@@ -157,10 +165,11 @@
 
   <h3>The event engine</h3>
   <p>Android saves settings by writing <code>settings_global.xml.new</code> or <code>settings_secure.xml.new</code> and renaming it into place, and init does the same with <code>/data/property/persistent_properties</code> whenever a <code>persist.*</code> property changes. One busybox <code>inotifyd</code> watches those directories, plus the module's own data directory for config changes.</p>
+  <p>The mock location app is kept in <code>/data/system/appops_accesses.xml</code>, which Android saves the same way about ten seconds after a change, and <code>/data/system/packages.xml</code> moves whenever an app is installed, updated or removed. Both are watched too; that directory is otherwise quiet.</p>
   <p>The daemon reads those events with the shell's built-in <code>read</code>. Waiting, filtering and keeping time are all builtins, so while nothing happens <strong>the daemon starts no processes at all</strong>.</p>
 
   <h3>Only what changed</h3>
-  <p>An event names the file that changed, and the daemon checks only the keys that live there: a change to the global settings checks USB Debugging and Developer Options, a property change checks the two Xiaomi properties, and so on.</p>
+  <p>An event names the file that changed, and the daemon checks only the keys that live there: a change to the global settings checks USB Debugging and Developer Options, a property change checks the two Xiaomi properties, an AppOps or package change checks the mock location app, and so on.</p>
 
   <h3>Cooldowns</h3>
   <p>HyperOS rewrites <code>settings_secure.xml</code> every few seconds for unrelated reasons. Checks of that file are therefore rate-limited by the profile, while the quiet sources — global settings and properties — are checked within a second or two. A cooldown only delays a check; it never skips one.</p>
@@ -210,6 +219,9 @@
   <h3>Settings cards</h3>
   <p>The switch is what the config asks for. The badge under the name is what the system reports right now — green when they match, amber when they do not.</p>
 
+  <h3>Mock Location App card</h3>
+  <p>The picker offers <strong>not managed</strong> plus every installed app that asks for the mock location permission. The list comes from a cache. When apps have been installed, updated or removed, only those are checked again, in the background, and the picker fills in when that is done. The very first scan checks every user app and takes a few seconds. The badge shows which app actually holds the permission. If the chosen app is uninstalled, Android drops its permission and the module switches the setting back to <strong>not managed</strong> on its own.</p>
+
   <h3>Runtime table</h3>
   <p>Per setting: config value, live value, and whether they match. <span style="color:var(--purple)">unmanaged</span> means the key is set to <code>skip</code>; <span style="color:var(--purple)">n/a</span> means the settings service did not answer.</p>
 
@@ -234,6 +246,8 @@ development_settings_enabled=0
 extended_power_menu=1
 adbinstall=1
 adbinput=1
+<span class="cm"># package name of the mock location app, or skip</span>
+mock_location_app=skip
 
 <span class="cm"># profile: fast | balanced | battery</span>
 profile=balanced
@@ -260,6 +274,8 @@ sh $S --restore                 <span class="cm"># original values, pauses enfor
 sh $S --config adb_enabled 1    <span class="cm"># 1 | 0 | skip</span>
 sh $S --config profile battery  <span class="cm"># fast | balanced | battery</span>
 sh $S --config engine poll      <span class="cm"># auto | poll</span>
+sh $S --config mock_location_app com.example.app   <span class="cm"># or skip</span>
+sh $S --mock-apps               <span class="cm"># apps offered in the picker</span>
 sh $S --config log_level 2      <span class="cm"># 0 | 1 | 2</span>
 
 sh $S --daemon-start
@@ -275,7 +291,7 @@ sh $S --status | grep '^LIVE_adb_enabled='</pre>
 <!-- 8 -->
 <div class="sec-title" id="uninstall">8 · restore &amp; uninstall</div>
 <div class="box">
-  <p>The installer snapshots every managed value <em>before</em> the module touches anything — including whether a setting existed at all and whether a property was set.</p>
+  <p>The installer snapshots every managed value <em>before</em> the module touches anything — including whether a setting existed at all and whether a property was set. A value managed by a newer version (like the mock location app after updating) is captured right before the module changes it for the first time.</p>
 
   <h3>Restore Original</h3>
   <p>Puts that snapshot back and <strong>pauses enforcement</strong>, because a running daemon would otherwise reapply your config within a second. Apply Now, Restart Daemon or a reboot resumes it.</p>
@@ -298,6 +314,12 @@ sh $S --status | grep '^LIVE_adb_enabled='</pre>
 
   <h3>Drift that never clears</h3>
   <p>The system refuses the value. The failure is logged once as an error together with the value that was actually read back, and retried on every later change.</p>
+
+  <h3>The mock location app went back to "not managed"</h3>
+  <p>The chosen app was uninstalled, so the choice was released (the log says so). Reinstall it and pick it again. A package that is not installed cannot be picked, and never takes the permission away from the current app.</p>
+
+  <h3>My mock location app is not in the list</h3>
+  <p>Only apps that ask for <code>android.permission.ACCESS_MOCK_LOCATION</code> can be selected — the same rule Settings uses. Some location spoofers work through LSPosed instead and do not need it.</p>
 
   <h3>extended_power_menu always drifts</h3>
   <p>That setting only exists on Xiaomi / HyperOS. Set it to <code>skip</code>.</p>
@@ -327,7 +349,9 @@ sh $S --status | grep '^LIVE_adb_enabled='</pre>
     ├── state         <span class="cm">counters, engine, pids</span>
     ├── daemon.pid
     ├── watcher.pid
-    └── events        <span class="cm">FIFO between inotifyd and the daemon</span></pre>
+    ├── events        <span class="cm">FIFO between inotifyd and the daemon</span>
+    ├── mock-scan     <span class="cm">per-app scan results (package, version, 0/1)</span>
+    └── mock-scan.stamp  <span class="cm">packages.xml state the scan matches</span></pre>
   <p>Nothing mutable lives in the module directory, because a module update replaces it wholesale.</p>
 </div>
 
