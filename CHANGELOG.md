@@ -2,6 +2,90 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v6
+
+### Changed — event-driven enforcement
+
+The daemon no longer polls. Android saves settings by writing
+`settings_*.xml.new` and renaming it into place, and init does the same with
+`/data/property/persistent_properties`. One busybox `inotifyd` watches those
+directories plus the module's data directory, and the daemon reads its events
+from a FIFO with the shell's built-in `read`. An idle daemon starts no
+processes at all.
+
+- Each event is checked only against the keys stored in the file that changed.
+- `settings_secure.xml` is rewritten by HyperOS every few seconds, so its checks
+  are rate-limited per profile (fast 2 s, balanced 10 s, battery 30 s). Global
+  settings and properties are checked within 1–2 s. A cooldown delays a check,
+  it never drops one.
+- A full verification still runs on a timer (5 / 15 / 30 min).
+- The watcher is restarted if it dies; if it keeps dying, the daemon switches
+  to the poll engine by itself.
+- New `engine` setting: `auto` (events) or `poll` (timed checks that `stat` the
+  same files and check only what changed). Used automatically when `inotifyd`
+  is not available.
+- Profile and engine changes take effect immediately: `--config` signals the
+  daemon instead of waiting for its next pass.
+
+### Fixed
+
+- **Status missing after an update.** The last status was cached in the state
+  file, which survives updates, so a fresh `module.prop` never got
+  "Working" back. The status is now compared with `module.prop` itself.
+- **Stale PID file.** A PID was trusted if its command line contained
+  `service.sh` — true for every module. Early-boot PIDs repeat from boot to
+  boot, so a stale file could point at another module's daemon: this one then
+  refused to start, and Daemon Stop, update and uninstall could kill the wrong
+  process. PIDs are now matched against this module's own path, zombies do not
+  count, and runtime files are cleared on boot.
+- **Error text taken as a value.** When the settings service fails, `cmd`
+  prints its error on stdout. It is now recognised as "unreadable" instead of
+  being compared with, and logged as, the setting's value.
+- **Slow and unclean stop.** A TERM arriving during `sleep` was held until the
+  sleep ended (up to 5 minutes), so every stop ended in `kill -9` and left an
+  orphaned `sleep`. Stopping is now immediate and takes the watcher with it.
+- **Restore Original was undone at once.** The running daemon reapplied the
+  config on its next pass. Restore now pauses enforcement until Apply Now,
+  Restart Daemon or the next reboot, and the WebUI shows "paused".
+- **Uninstall could leave settings unrestored.** The settings part was only
+  retried after boot if Developer Options were still hidden. It is now always
+  repeated once the settings service answers. Settings that did not exist
+  before installation are deleted again and unset properties are cleared,
+  instead of being left at the module's values.
+- **Updating stopped enforcement until the reboot.** The installer killed the
+  running daemon; it is now left alone and replaced by the reboot.
+- **Hand-edited config.** CRLF line endings, surrounding spaces and trailing
+  `# comments` are handled. Invalid values are ignored with one warning and the
+  key falls back to `skip`. Writes from the WebUI keep the file's order and
+  comments.
+- **Log noise.** A failure is logged once per streak instead of on every pass,
+  and the settings service disappearing during a reboot is not logged at all.
+- **Stale lock.** A lock whose holder died before recording its PID blocked
+  config writes forever; it is now taken over.
+
+### WebUI
+
+- Header shows the version from `module.prop` and the engine actually running.
+- Status line shows the watcher's PID and a **paused** state.
+- The badge on each card shows the live value (VISIBLE / HIDDEN, ON / OFF /
+  UNSET) and turns amber when it does not match the switch.
+- "reaction" chip and profile hint describe the current profile; new Engine
+  card; `n/a` in the runtime table when the settings service does not answer.
+- Hints no longer break in the middle of a word.
+- Help page rewritten for the event engine, profiles, restore and uninstall.
+
+### Other
+
+- All versions come from `module.prop`; the installer and WebUI no longer carry
+  their own.
+- Default configuration defined in one place; the installer uses `common.sh`.
+- `update-binary` reduced to the standard installer.
+- Runtime files moved to `/data/adb/dev-options-persist/run/`; old ones are
+  cleaned up on boot.
+- LICENSE file added.
+
+---
+
 ## v5
 
 ### Added — built-in help page

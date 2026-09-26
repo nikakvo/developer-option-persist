@@ -1,41 +1,59 @@
 #!/system/bin/sh
 # shellcheck shell=ash disable=SC3043,SC2034
 #
-# common.sh — paths, tool resolution, logging, config/state and the key table.
-# Sourced by service.sh and uninstall.sh.
+# common.sh — paths, the key table, tool resolution, logging, locking, config,
+# state and original-value handling. Sourced by service.sh and customize.sh.
 #
-# POSIX sh only. Written to keep process spawns in the daemon's idle path as
-# close to zero as possible — see the notes in service.sh.
+# POSIX sh only; runs under busybox ash (boot, daemon) and mksh (WebUI calls).
+# Anything on the daemon's idle path is written with shell builtins so an idle
+# daemon spawns no processes at all.
 
 MODULE_ID="dev-options-persist"
 MODDIR="${MODDIR:-/data/adb/modules/$MODULE_ID}"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-# Everything mutable lives OUTSIDE the module directory: a module update wipes
-# /data/adb/modules/<id> completely, which used to reset the user's settings.
+# Everything mutable lives outside the module directory, which a module update
+# replaces wholesale.
 DATA_DIR="/data/adb/$MODULE_ID"
 CONFIG_FILE="$DATA_DIR/config"
 ORIGINAL_FILE="$DATA_DIR/original"
-STATE_FILE="$DATA_DIR/state"
-PID_FILE="$DATA_DIR/daemon.pid"
-LOCK_DIR="$DATA_DIR/locks"
-CONFIG_LOCK="$LOCK_DIR/config.lock"
 LOG_DIR="$DATA_DIR/logs"
 LOG_FILE="$LOG_DIR/service.log"
 
-LEGACY_CONFIG="$MODDIR/config"
+# Runtime files get their own directory so the daemon's watch on DATA_DIR only
+# ever sees the config file change.
+RUN_DIR="$DATA_DIR/run"
+STATE_FILE="$RUN_DIR/state"
+PID_FILE="$RUN_DIR/daemon.pid"
+WATCHER_PID_FILE="$RUN_DIR/watcher.pid"
+FIFO="$RUN_DIR/events"
+LOCK_DIR="$RUN_DIR/locks"
+CONFIG_LOCK="$LOCK_DIR/config"
+APPLY_LOCK="$LOCK_DIR/apply"
+
+# Older layouts, cleaned up or migrated on install and boot.
+LEGACY_CONFIG="/data/adb/modules/$MODULE_ID/config" # v3
+LEGACY_RUNTIME="$DATA_DIR/state $DATA_DIR/daemon.pid $DATA_DIR/locks" # v4-v5
+
 MODULE_PROP="$MODDIR/module.prop"
 
-SETTINGS_GLOBAL_XML="/data/system/users/0/settings_global.xml"
-SETTINGS_SECURE_XML="/data/system/users/0/settings_secure.xml"
+SETTINGS_DIR="/data/system/users/0"
+SETTINGS_GLOBAL_XML="$SETTINGS_DIR/settings_global.xml"
+SETTINGS_SECURE_XML="$SETTINGS_DIR/settings_secure.xml"
+PROP_DIR="/data/property"
+PROP_FILE="$PROP_DIR/persistent_properties"
 
 LOG_MAX_BYTES=131072
-LOG_KEEP_LINES=250
+LOG_KEEP_LINES=400
+
+CR=$(printf '\r')
 
 # ── Managed keys ──────────────────────────────────────────────────────────────
-# One table instead of the same five lines copy-pasted through the script.
 KEYS="adb_enabled development_settings_enabled extended_power_menu adbinstall adbinput"
-META_KEYS="profile log_level"
+KEYS_GLOBAL="adb_enabled development_settings_enabled"
+KEYS_SECURE="extended_power_menu"
+KEYS_PROP="adbinstall adbinput"
+META_KEYS="profile log_level engine"
 
 key_kind() {
   case "$1" in
@@ -65,75 +83,99 @@ key_label() {
   esac
 }
 
-# get_live / set_live are on the daemon's hot path, so they dispatch directly.
-# Using $(key_kind ...) here would fork two extra subshells per key per check.
-get_live() {
+# read_live <key> — sets LIVE. Returns 1 when the value could not be read.
+#
+# A healthy read is digits, "null" for an absent setting, or empty for an unset
+# property. Anything else is an error: when the settings service is down, `cmd`
+# prints its failure message on stdout ("cmd: Failure calling service settings:
+# Failed transaction"), and v5 took that text for the setting's value.
+read_live() {
   case "$1" in
-    adb_enabled | development_settings_enabled) settings get global "$1" 2>/dev/null ;;
-    extended_power_menu) settings get secure "$1" 2>/dev/null ;;
-    adbinstall) getprop persist.security.adbinstall 2>/dev/null ;;
-    adbinput) getprop persist.security.adbinput 2>/dev/null ;;
+    adb_enabled | development_settings_enabled)
+      LIVE=$(settings get global "$1" 2>/dev/null) ;;
+    extended_power_menu)
+      LIVE=$(settings get secure "$1" 2>/dev/null) ;;
+    adbinstall)
+      LIVE=$(getprop persist.security.adbinstall 2>/dev/null) ;;
+    adbinput)
+      LIVE=$(getprop persist.security.adbinput 2>/dev/null) ;;
+    *)
+      LIVE=""
+      return 1 ;;
   esac
+  case "$1" in
+    adbinstall | adbinput)
+      case "$LIVE" in
+        '' | [0-9] | [0-9][0-9]) return 0 ;;
+      esac ;;
+    *)
+      case "$LIVE" in
+        null) return 0 ;;
+        '' | *[!0-9]*) ;;
+        *) return 0 ;;
+      esac ;;
+  esac
+  LIVE=""
+  return 1
 }
 
+# set_live <key> <value>. "null" deletes a setting, "" clears a property.
 set_live() {
   case "$1" in
-    adb_enabled | development_settings_enabled) settings put global "$1" "$2" 2>/dev/null ;;
-    extended_power_menu) settings put secure "$1" "$2" 2>/dev/null ;;
+    adb_enabled | development_settings_enabled)
+      if [ "$2" = null ]; then
+        settings delete global "$1" >/dev/null 2>&1
+      else
+        settings put global "$1" "$2" >/dev/null 2>&1
+      fi ;;
+    extended_power_menu)
+      if [ "$2" = null ]; then
+        settings delete secure "$1" >/dev/null 2>&1
+      else
+        settings put secure "$1" "$2" >/dev/null 2>&1
+      fi ;;
     adbinstall) setprop persist.security.adbinstall "$2" 2>/dev/null ;;
     adbinput) setprop persist.security.adbinput "$2" 2>/dev/null ;;
   esac
 }
 
-# ── Poll profiles ─────────────────────────────────────────────────────────────
-# base = interval while something is changing, max = interval after the device
-# has been idle for a while. The daemon backs off between the two.
-profile_base() {
+# ── Profiles ──────────────────────────────────────────────────────────────────
+# CD_FAST     cooldown for the quiet sources (global settings, properties)
+# CD_SECURE   cooldown for settings_secure.xml, which HyperOS rewrites every
+#             few seconds for unrelated reasons
+# FULL        safety-net verification of every key
+# POLL        tick of the fallback engine when inotify is unavailable
+set_profile_vars() {
   case "$1" in
-    fast) printf '5' ;;
-    battery) printf '30' ;;
-    *) printf '15' ;;
-  esac
-}
-
-profile_max() {
-  case "$1" in
-    fast) printf '15' ;;
-    battery) printf '300' ;;
-    *) printf '60' ;;
-  esac
-}
-
-# How often to run a full verification even when nothing looks changed.
-profile_full() {
-  case "$1" in
-    fast) printf '60' ;;
-    battery) printf '900' ;;
-    *) printf '300' ;;
+    fast) CD_FAST=1 CD_SECURE=2 FULL=300 POLL=15 ;;
+    battery) CD_FAST=2 CD_SECURE=30 FULL=1800 POLL=300 ;;
+    *) CD_FAST=1 CD_SECURE=10 FULL=900 POLL=60 ;;
   esac
 }
 
 # ── External tools ────────────────────────────────────────────────────────────
 BUSYBOX=""
-for _bb_cand in \
-  /data/adb/magisk/busybox \
+for _bb in \
   /data/adb/ksu/bin/busybox \
+  /data/adb/magisk/busybox \
   /data/adb/ap/bin/busybox \
   /system/bin/busybox \
   /system/xbin/busybox; do
-  [ -x "$_bb_cand" ] || continue
-  "$_bb_cand" echo >/dev/null 2>&1 || continue
-  BUSYBOX="$_bb_cand"
+  [ -x "$_bb" ] || continue
+  "$_bb" true >/dev/null 2>&1 || continue
+  BUSYBOX="$_bb"
   break
 done
-unset _bb_cand
+unset _bb
 
 _BB_APPLETS=""
-[ -n "$BUSYBOX" ] && _BB_APPLETS=$("$BUSYBOX" --list 2>/dev/null)
+[ -n "$BUSYBOX" ] && _BB_APPLETS=" $("$BUSYBOX" --list 2>/dev/null | tr '\n' ' ') "
 
 has_applet() {
-  [ -n "$_BB_APPLETS" ] || return 1
-  printf '%s\n' "$_BB_APPLETS" | grep -qx "$1"
+  case "$_BB_APPLETS" in
+    *" $1 "*) return 0 ;;
+  esac
+  return 1
 }
 
 resolve_cmd() {
@@ -141,7 +183,7 @@ resolve_cmd() {
     printf '%s' "$1"
     return 0
   fi
-  if [ -n "$BUSYBOX" ] && has_applet "$1"; then
+  if has_applet "$1"; then
     printf '%s %s' "$BUSYBOX" "$1"
     return 0
   fi
@@ -151,14 +193,18 @@ resolve_cmd() {
 CMD_STAT=$(resolve_cmd stat)
 CMD_SETSID=$(resolve_cmd setsid)
 CMD_NOHUP=$(resolve_cmd nohup)
-CMD_PGREP=$(resolve_cmd pgrep)
 CMD_BASE64=$(resolve_cmd base64)
+CMD_MKFIFO=$(resolve_cmd mkfifo)
 
-# The mtime gate is what keeps the daemon cheap. Without stat we still work,
-# just with a full check every cycle on a longer interval.
-MTIME_GATE=1
-[ -n "$CMD_STAT" ] || MTIME_GATE=0
-[ -f "$SETTINGS_GLOBAL_XML" ] || MTIME_GATE=0
+# Only busybox's inotifyd is used: it flushes every event line, which the
+# daemon's reader depends on.
+CMD_INOTIFYD=""
+has_applet inotifyd && CMD_INOTIFYD="$BUSYBOX inotifyd"
+
+# The shell the daemon runs under. Boot scripts already run in busybox ash;
+# a daemon started from the WebUI is given the same shell.
+DAEMON_SH="sh"
+[ -n "$BUSYBOX" ] && DAEMON_SH="$BUSYBOX sh"
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_LEVEL_VAL=1
@@ -166,7 +212,7 @@ LOG_LEVEL_VAL=1
 _ts() { date '+%Y-%m-%d %H:%M:%S' 2>/dev/null; }
 
 _log() {
-  mkdir -p "$LOG_DIR" 2>/dev/null
+  [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR" 2>/dev/null
   printf '[%s] %s %s\n' "$1" "$(_ts)" "$2" >>"$LOG_FILE" 2>/dev/null
 }
 
@@ -176,7 +222,7 @@ log_info() { [ "$LOG_LEVEL_VAL" -ge 1 ] && _log INFO "$*"; return 0; }
 log_debug() { [ "$LOG_LEVEL_VAL" -ge 2 ] && _log DEBUG "$*"; return 0; }
 
 log_sep() {
-  mkdir -p "$LOG_DIR" 2>/dev/null
+  [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR" 2>/dev/null
   printf '=== %s %s ===\n' "$(_ts)" "$*" >>"$LOG_FILE" 2>/dev/null
   return 0
 }
@@ -213,77 +259,112 @@ log_rotate() {
   return 0
 }
 
+# ── Small helpers ─────────────────────────────────────────────────────────────
+ensure_dirs() {
+  mkdir -p "$DATA_DIR" "$LOG_DIR" "$RUN_DIR" "$LOCK_DIR" 2>/dev/null
+  chmod 700 "$DATA_DIR" 2>/dev/null
+}
+
+# now_up — seconds since boot into NOW, without spawning `date`.
+now_up() {
+  read -r NOW _ </proc/uptime 2>/dev/null || NOW=0
+  NOW=${NOW%%.*}
+}
+
+# read_pidfile <file> — prints the PID, or 0.
+read_pidfile() {
+  _rp=0
+  [ -f "$1" ] && read -r _rp <"$1" 2>/dev/null
+  case "$_rp" in
+    '' | *[!0-9]*) _rp=0 ;;
+  esac
+  printf '%s' "$_rp"
+  unset _rp
+}
+
+# pid_alive <pid> — running and not a zombie.
+pid_alive() {
+  case "$1" in
+    '' | 0 | *[!0-9]*) return 1 ;;
+  esac
+  [ -r "/proc/$1/stat" ] || return 1
+  _pa_s=""
+  read -r _ _ _pa_s _ <"/proc/$1/stat" 2>/dev/null
+  [ "$_pa_s" = "Z" ] && return 1
+  [ -n "$_pa_s" ]
+}
+
+# pid_is <pid> <needle> — alive and its command line contains needle. A bare
+# PID is not proof of identity: PIDs are reused, and early-boot PIDs are
+# assigned in much the same order every boot, so a stale PID file can easily
+# point at another module's service.sh.
+pid_is() {
+  pid_alive "$1" || return 1
+  grep -qF -- "$2" "/proc/$1/cmdline" 2>/dev/null
+}
+
+DAEMON_NEEDLE="$MODULE_ID/service.sh"
+
+daemon_pid() { read_pidfile "$PID_FILE"; }
+
+daemon_is_running() {
+  pid_is "$(daemon_pid)" "$DAEMON_NEEDLE"
+}
+
+# kill_verified <pid> <needle> <grace seconds>
+kill_verified() {
+  pid_is "$1" "$2" || return 1
+  kill "$1" 2>/dev/null
+  _kv=0
+  while pid_alive "$1" && [ "$_kv" -lt "$3" ]; do
+    sleep 1
+    _kv=$((_kv + 1))
+  done
+  pid_alive "$1" && kill -9 "$1" 2>/dev/null
+  unset _kv
+  return 0
+}
+
 # ── Locking ───────────────────────────────────────────────────────────────────
-lock_acquire() {
-  _lk="$1"
-  _lk_t="${2:-10}"
-  _lk_i=0
-  mkdir -p "$LOCK_DIR" 2>/dev/null
-  while ! mkdir "$_lk" 2>/dev/null; do
-    _lk_i=$((_lk_i + 1))
-    if [ "$_lk_i" -gt "$_lk_t" ]; then
-      unset _lk _lk_t _lk_i
+# mkdir is atomic. A lock whose owner is gone, or that never got an owner
+# written (the holder died between mkdir and echo), is taken over.
+lock_acquire() { # lock_acquire <dir> <seconds>
+  _lk_t="${2:-5}"
+  _lk_empty=0
+  [ -d "$LOCK_DIR" ] || mkdir -p "$LOCK_DIR" 2>/dev/null
+  while ! mkdir "$1" 2>/dev/null; do
+    _lk_o=""
+    [ -f "$1/pid" ] && read -r _lk_o <"$1/pid" 2>/dev/null
+    if [ -n "$_lk_o" ]; then
+      if ! pid_alive "$_lk_o"; then
+        rm -rf "$1" 2>/dev/null
+        continue
+      fi
+    else
+      _lk_empty=$((_lk_empty + 1))
+      if [ "$_lk_empty" -ge 3 ]; then
+        rm -rf "$1" 2>/dev/null
+        continue
+      fi
+    fi
+    [ "$_lk_t" -le 0 ] && {
+      unset _lk_t _lk_o _lk_empty
       return 1
-    fi
-    _lk_o=$(cat "$_lk/pid" 2>/dev/null)
-    if [ -n "$_lk_o" ] && [ ! -d "/proc/$_lk_o" ]; then
-      rm -rf "$_lk" 2>/dev/null
-      continue
-    fi
+    }
+    _lk_t=$((_lk_t - 1))
     sleep 1
   done
-  echo "$$" >"$_lk/pid" 2>/dev/null
-  unset _lk _lk_t _lk_i _lk_o
+  echo "$$" >"$1/pid" 2>/dev/null
+  unset _lk_t _lk_o _lk_empty
   return 0
 }
 
 lock_release() { rm -rf "$1" 2>/dev/null; return 0; }
 
 # ── Config ────────────────────────────────────────────────────────────────────
-# Loaded into CFG_<key> shell variables with a single `while read` — no grep,
-# cut or tr subprocesses. The old code spawned three processes per key per read
-# and read every key twice per cycle.
-CFG_MTIME=""
-
-file_mtime() {
-  [ -n "$CMD_STAT" ] || {
-    printf '0'
-    return 0
-  }
-  $CMD_STAT -c %Y "$1" 2>/dev/null || printf '0'
-}
-
-load_config() {
-  for _lc_k in $KEYS $META_KEYS; do
-    eval "CFG_$_lc_k=''"
-  done
-
-  if [ -f "$CONFIG_FILE" ]; then
-    while IFS='=' read -r _lc_k _lc_v; do
-      case "$_lc_k" in
-        '' | '#'*) continue ;;
-      esac
-      case " $KEYS $META_KEYS " in
-        *" $_lc_k "*) eval "CFG_$_lc_k=\"\$_lc_v\"" ;;
-      esac
-    done <"$CONFIG_FILE"
-  fi
-
-  [ -n "$CFG_profile" ] || CFG_profile="balanced"
-  case "$CFG_log_level" in
-    0 | 1 | 2) ;;
-    *) CFG_log_level=1 ;;
-  esac
-  LOG_LEVEL_VAL="$CFG_log_level"
-
-  CFG_MTIME=$(file_mtime "$CONFIG_FILE")
-  unset _lc_k _lc_v
-  return 0
-}
-
 write_default_config() {
   mkdir -p "$DATA_DIR" 2>/dev/null
-  cat >"$CONFIG_FILE" <<'EOF'
+  cat >"$CONFIG_FILE" <<'CFG'
 # Developer Options Persist — configuration
 # 1 = force on, 0 = force off, skip = leave this setting alone
 adb_enabled=1
@@ -292,87 +373,344 @@ extended_power_menu=1
 adbinstall=1
 adbinput=1
 
-# profile: fast | balanced | battery  (poll interval / battery trade-off)
+# profile: fast | balanced | battery  (reaction time / battery trade-off)
 profile=balanced
 # log_level: 0 = errors only, 1 = normal, 2 = verbose
 log_level=1
-EOF
+# engine: auto (react to changes as they happen) | poll (timed checks only)
+engine=auto
+CFG
   chmod 600 "$CONFIG_FILE" 2>/dev/null
   return 0
 }
 
+# ensure_config — create it, or add settings that a newer version introduced.
+ensure_config() {
+  if [ ! -f "$CONFIG_FILE" ]; then
+    write_default_config
+    return 0
+  fi
+  grep -q '^profile=' "$CONFIG_FILE" || echo "profile=balanced" >>"$CONFIG_FILE"
+  grep -q '^log_level=' "$CONFIG_FILE" || echo "log_level=1" >>"$CONFIG_FILE"
+  grep -q '^engine=' "$CONFIG_FILE" || echo "engine=auto" >>"$CONFIG_FILE"
+  chmod 600 "$CONFIG_FILE" 2>/dev/null
+  return 0
+}
+
+migrate_legacy_config() {
+  [ -f "$LEGACY_CONFIG" ] || return 0
+  mkdir -p "$DATA_DIR" 2>/dev/null
+  if [ ! -f "$CONFIG_FILE" ]; then
+    cp -f "$LEGACY_CONFIG" "$CONFIG_FILE" 2>/dev/null
+    chmod 600 "$CONFIG_FILE" 2>/dev/null
+    log_warn "Migrated config from the module directory to $CONFIG_FILE"
+  fi
+  rm -f "$LEGACY_CONFIG" 2>/dev/null
+  return 0
+}
+
+# _trim — strips CR, an inline "# comment" and surrounding blanks from _t.
+_trim() {
+  _t=${_t%"$CR"}
+  _t=${_t%%#*}
+  while :; do
+    case "$_t" in
+      ' '* | '	'*) _t=${_t#?} ;;
+      *' ' | *'	') _t=${_t%?} ;;
+      *) break ;;
+    esac
+  done
+}
+
+# load_config [warn] — reads the file into CFG_<key> with builtins only.
+# Hand-edited files are tolerated: CRLF line endings, blanks, inline comments.
+# A value that is not valid falls back to a safe default (skip for managed
+# keys), and with "warn" each one is reported in the log.
+load_config() {
+  for _lc_k in $KEYS; do
+    eval "CFG_$_lc_k=skip"
+  done
+  CFG_profile=balanced
+  CFG_log_level=1
+  CFG_engine=auto
+  CFG_BAD=""
+
+  if [ -f "$CONFIG_FILE" ]; then
+    while IFS= read -r _lc_line || [ -n "$_lc_line" ]; do
+      case "$_lc_line" in
+        *=*) ;;
+        *) continue ;;
+      esac
+      _t=${_lc_line%%=*}
+      _trim
+      _lc_k=$_t
+      _t=${_lc_line#*=}
+      _trim
+      _lc_v=$_t
+      case "$_lc_k" in
+        '' | '#'*) continue ;;
+      esac
+      case " $KEYS " in
+        *" $_lc_k "*)
+          case "$_lc_v" in
+            0 | 1 | skip) eval "CFG_$_lc_k=\$_lc_v" ;;
+            *) CFG_BAD="$CFG_BAD $_lc_k=$_lc_v" ;;
+          esac
+          continue ;;
+      esac
+      case "$_lc_k" in
+        profile)
+          case "$_lc_v" in
+            fast | balanced | battery) CFG_profile=$_lc_v ;;
+            *) CFG_BAD="$CFG_BAD profile=$_lc_v" ;;
+          esac ;;
+        log_level)
+          case "$_lc_v" in
+            0 | 1 | 2) CFG_log_level=$_lc_v ;;
+            *) CFG_BAD="$CFG_BAD log_level=$_lc_v" ;;
+          esac ;;
+        engine)
+          case "$_lc_v" in
+            auto | poll) CFG_engine=$_lc_v ;;
+            *) CFG_BAD="$CFG_BAD engine=$_lc_v" ;;
+          esac ;;
+      esac
+    done <"$CONFIG_FILE"
+  fi
+
+  LOG_LEVEL_VAL=$CFG_log_level
+  if [ "$1" = warn ] && [ -n "$CFG_BAD" ]; then
+    log_warn "Ignored invalid config value(s):$CFG_BAD — using defaults for those"
+  fi
+  unset _lc_k _lc_v _lc_line _t
+  return 0
+}
+
+# write_cfg <key> <value> — replaces the line in place, so the file keeps its
+# order and comments, and appends the key if it was missing.
 write_cfg() {
   lock_acquire "$CONFIG_LOCK" 5 || {
     log_warn "config lock busy, $1 not written"
     return 1
   }
   _wc_tmp="$CONFIG_FILE.tmp.$$"
-  grep -v "^$1=" "$CONFIG_FILE" 2>/dev/null >"$_wc_tmp"
-  printf '%s=%s\n' "$1" "$2" >>"$_wc_tmp"
-  mv -f "$_wc_tmp" "$CONFIG_FILE" 2>/dev/null
-  chmod 600 "$CONFIG_FILE" 2>/dev/null
-  lock_release "$CONFIG_LOCK"
-  unset _wc_tmp
-  return 0
-}
+  _wc_done=0
+  {
+    if [ -f "$CONFIG_FILE" ]; then
+      while IFS= read -r _wc_l || [ -n "$_wc_l" ]; do
+        _wc_l=${_wc_l%"$CR"}
+        _t=${_wc_l%%=*}
+        _trim
+        case "$_wc_l" in
+          *=*)
+            if [ "$_t" = "$1" ]; then
+              [ "$_wc_done" -eq 0 ] && printf '%s=%s\n' "$1" "$2"
+              _wc_done=1
+              continue
+            fi ;;
+        esac
+        printf '%s\n' "$_wc_l"
+      done <"$CONFIG_FILE"
+    fi
+    [ "$_wc_done" -eq 1 ] || printf '%s=%s\n' "$1" "$2"
+  } >"$_wc_tmp" 2>/dev/null
 
-# ── State (runtime counters shown in the UI) ─────────────────────────────────
-read_state() {
-  [ -f "$STATE_FILE" ] || return 0
-  sed -n "s/^$1=//p" "$STATE_FILE" 2>/dev/null | tail -n 1
-}
-
-write_state() { # write_state KEY=VALUE ...
-  mkdir -p "$DATA_DIR" 2>/dev/null
-  _ws_tmp="$STATE_FILE.tmp.$$"
-  if [ -f "$STATE_FILE" ]; then
-    cp -f "$STATE_FILE" "$_ws_tmp" 2>/dev/null || : >"$_ws_tmp"
-  else
-    : >"$_ws_tmp"
+  _wc_rc=1
+  if [ -s "$_wc_tmp" ]; then
+    chmod 600 "$_wc_tmp" 2>/dev/null
+    mv -f "$_wc_tmp" "$CONFIG_FILE" 2>/dev/null && _wc_rc=0
   fi
-  for _ws_p in "$@"; do
-    grep -v "^${_ws_p%%=*}=" "$_ws_tmp" >"$_ws_tmp.n" 2>/dev/null
-    mv -f "$_ws_tmp.n" "$_ws_tmp" 2>/dev/null
-    printf '%s\n' "$_ws_p" >>"$_ws_tmp"
-  done
-  mv -f "$_ws_tmp" "$STATE_FILE" 2>/dev/null
-  unset _ws_tmp _ws_p
+  rm -f "$_wc_tmp" 2>/dev/null
+  lock_release "$CONFIG_LOCK"
+  unset _wc_tmp _wc_done _wc_l _t
+  return "$_wc_rc"
+}
+
+# ── State (runtime values shown in the UI) ───────────────────────────────────
+read_state() {
+  _rs=""
+  if [ -f "$STATE_FILE" ]; then
+    while IFS= read -r _rs_l; do
+      case "$_rs_l" in
+        "$1="*) _rs=${_rs_l#*=} ;;
+      esac
+    done <"$STATE_FILE"
+  fi
+  printf '%s' "$_rs"
+  unset _rs _rs_l
+}
+
+read_state_num() {
+  _rsn=$(read_state "$1")
+  case "$_rsn" in
+    '' | *[!0-9]*) _rsn=0 ;;
+  esac
+  printf '%s' "$_rsn"
+  unset _rsn
+}
+
+# write_state KEY=VALUE ... — one read, one write, one rename.
+write_state() {
+  [ -d "$RUN_DIR" ] || mkdir -p "$RUN_DIR" 2>/dev/null
+  _ws_tmp="$STATE_FILE.tmp.$$"
+  {
+    if [ -f "$STATE_FILE" ]; then
+      while IFS= read -r _ws_l; do
+        _ws_skip=0
+        for _ws_p in "$@"; do
+          case "$_ws_l" in
+            "${_ws_p%%=*}="*) _ws_skip=1 ;;
+          esac
+        done
+        [ "$_ws_skip" -eq 0 ] && printf '%s\n' "$_ws_l"
+      done <"$STATE_FILE"
+    fi
+    for _ws_p in "$@"; do
+      printf '%s\n' "$_ws_p"
+    done
+  } >"$_ws_tmp" 2>/dev/null
+  mv -f "$_ws_tmp" "$STATE_FILE" 2>/dev/null || rm -f "$_ws_tmp" 2>/dev/null
+  unset _ws_tmp _ws_l _ws_p _ws_skip
   return 0
 }
 
-# ── Original values (captured before we ever wrote anything) ─────────────────
+# ── Original values (captured before the module first writes anything) ──────
 capture_originals() {
   [ -f "$ORIGINAL_FILE" ] && return 0
   mkdir -p "$DATA_DIR" 2>/dev/null
   _co_tmp="$ORIGINAL_FILE.tmp.$$"
+  _co_settings_ok=0
   : >"$_co_tmp"
   for _co_k in $KEYS; do
-    printf '%s=%s\n' "$_co_k" "$(get_live "$_co_k")" >>"$_co_tmp"
+    if read_live "$_co_k"; then
+      printf '%s=%s\n' "$_co_k" "$LIVE" >>"$_co_tmp"
+      case "$_co_k" in
+        adbinstall | adbinput) ;;
+        *) _co_settings_ok=1 ;;
+      esac
+    fi
   done
   # Only keep the snapshot if the settings provider actually answered.
-  if grep -q '=[0-9]' "$_co_tmp" 2>/dev/null; then
+  if [ "$_co_settings_ok" -eq 1 ]; then
+    chmod 600 "$_co_tmp" 2>/dev/null
     mv -f "$_co_tmp" "$ORIGINAL_FILE"
-    chmod 600 "$ORIGINAL_FILE" 2>/dev/null
     log_info "Captured original values"
+    _co_rc=0
   else
     rm -f "$_co_tmp"
     log_warn "Could not capture original values yet — settings provider not ready"
+    _co_rc=1
   fi
-  unset _co_tmp _co_k
-  return 0
+  unset _co_tmp _co_k _co_settings_ok
+  return "$_co_rc"
 }
 
 read_original() {
-  [ -f "$ORIGINAL_FILE" ] || return 0
-  sed -n "s/^$1=//p" "$ORIGINAL_FILE" 2>/dev/null | tail -n 1
+  _ro=""
+  if [ -f "$ORIGINAL_FILE" ]; then
+    while IFS= read -r _ro_l; do
+      case "$_ro_l" in
+        "$1="*) _ro=${_ro_l#*=} ;;
+      esac
+    done <"$ORIGINAL_FILE"
+  fi
+  printf '%s' "$_ro"
+  unset _ro _ro_l
 }
 
-# ── Misc ──────────────────────────────────────────────────────────────────────
+# restore_originals — shared by --restore. uninstall.sh carries its own copy
+# of the same rules because it must work without this file.
+restore_originals() {
+  [ -f "$ORIGINAL_FILE" ] || return 1
+  RESTORED=0
+  for _ro_k in $KEYS; do
+    grep -q "^$_ro_k=" "$ORIGINAL_FILE" 2>/dev/null || continue
+    _ro_v=$(read_original "$_ro_k")
+    case "$_ro_k:$_ro_v" in
+      adbinstall:* | adbinput:*)
+        case "$_ro_v" in '' | [0-9] | [0-9][0-9]) ;; *) continue ;; esac ;;
+      *:null) ;;
+      *:'' | *:*[!0-9]*) continue ;;
+    esac
+    # Hidden Developer Options is the one state the user cannot leave on
+    # their own, so it is always restored as visible.
+    if [ "$_ro_k" = development_settings_enabled ]; then
+      case "$_ro_v" in 0 | null) _ro_v=1 ;; esac
+    fi
+    set_live "$_ro_k" "$_ro_v"
+    case "$_ro_v" in
+      null) log_info "restored $_ro_k (removed — it did not exist before)" ;;
+      '') log_info "restored $_ro_k (cleared — it was unset before)" ;;
+      *) log_info "restored $_ro_k=$_ro_v" ;;
+    esac
+    RESTORED=$((RESTORED + 1))
+  done
+  unset _ro_k _ro_v
+  return 0
+}
+
+# ── module.prop status ────────────────────────────────────────────────────────
+STATUS_SUFFIXES="Working|Not Working|Stopped|Settings unavailable"
+
+# update_module_prop <status> — compares against the file itself, so a fresh
+# module.prop from an update gets its status back on the first pass (v5 kept
+# the last status in the state file, which survives updates, and skipped it).
+update_module_prop() {
+  [ -f "$MODULE_PROP" ] || return 0
+  _up_cur=""
+  while IFS= read -r _up_l; do
+    case "$_up_l" in
+      description=*) _up_cur=${_up_l#description=} ;;
+    esac
+  done <"$MODULE_PROP"
+
+  _up_base=$_up_cur
+  _up_ifs=$IFS
+  IFS='|'
+  for _up_s in $STATUS_SUFFIXES; do
+    case "$_up_base" in
+      *" - $_up_s") _up_base=${_up_base%" - $_up_s"} ;;
+    esac
+  done
+  IFS=$_up_ifs
+
+  _up_new="$_up_base - $1"
+  if [ "$_up_new" != "$_up_cur" ]; then
+    _up_tmp="$MODULE_PROP.tmp.$$"
+    while IFS= read -r _up_l; do
+      case "$_up_l" in
+        description=*) printf 'description=%s\n' "$_up_new" ;;
+        *) printf '%s\n' "$_up_l" ;;
+      esac
+    done <"$MODULE_PROP" >"$_up_tmp" 2>/dev/null
+    if [ -s "$_up_tmp" ]; then
+      mv -f "$_up_tmp" "$MODULE_PROP" 2>/dev/null
+      log_debug "module.prop status -> $1"
+    else
+      rm -f "$_up_tmp" 2>/dev/null
+    fi
+  fi
+  unset _up_cur _up_base _up_new _up_tmp _up_l _up_s _up_ifs
+  return 0
+}
+
+module_version() {
+  _mv=""
+  if [ -f "$MODULE_PROP" ]; then
+    while IFS= read -r _mv_l; do
+      case "$_mv_l" in
+        version=*) _mv=${_mv_l#version=} ;;
+      esac
+    done <"$MODULE_PROP"
+  fi
+  printf '%s' "$_mv"
+  unset _mv _mv_l
+}
+
+# ── Process helpers ───────────────────────────────────────────────────────────
 # daemon_detach — leave the caller's cgroups and opt out of the low-memory
 # killer. A daemon started from the WebUI is a child of the manager app's root
-# shell, so it inherits the app's cgroup: when Android freezes or kills the
-# manager, the daemon dies with it. Moving to the root cgroup and pinning
-# oom_score_adj makes it behave like a boot-started service instead.
+# shell and would otherwise be frozen or killed together with the app.
 daemon_detach() {
   for _dd in /dev/cpuctl /dev/cpuset /dev/stune /dev/blkio /dev/memcg /sys/fs/cgroup; do
     [ -d "$_dd" ] || continue
@@ -389,14 +727,14 @@ daemon_detach() {
 
 spawn_detached() {
   if [ -n "$CMD_SETSID" ]; then
+    # shellcheck disable=SC2086
     $CMD_SETSID "$@" </dev/null >/dev/null 2>&1 &
-    return 0
-  fi
-  if [ -n "$CMD_NOHUP" ]; then
+  elif [ -n "$CMD_NOHUP" ]; then
+    # shellcheck disable=SC2086
     $CMD_NOHUP "$@" </dev/null >/dev/null 2>&1 &
-    return 0
+  else
+    "$@" </dev/null >/dev/null 2>&1 &
   fi
-  "$@" </dev/null >/dev/null 2>&1 &
   return 0
 }
 
@@ -414,14 +752,25 @@ wait_for_prop() { # wait_for_prop <prop> <value> <timeout>
   return 1
 }
 
-migrate_legacy_config() {
-  [ -f "$LEGACY_CONFIG" ] || return 0
-  mkdir -p "$DATA_DIR" 2>/dev/null
-  if [ ! -f "$CONFIG_FILE" ]; then
-    cp -f "$LEGACY_CONFIG" "$CONFIG_FILE" 2>/dev/null
-    chmod 600 "$CONFIG_FILE" 2>/dev/null
-    log_warn "Migrated config from the module directory to $CONFIG_FILE"
-  fi
-  rm -f "$LEGACY_CONFIG" 2>/dev/null
+# wait_for_settings <timeout> — until the settings service answers properly.
+wait_for_settings() {
+  _ws=0
+  while [ "$_ws" -lt "$1" ]; do
+    read_live adb_enabled && {
+      unset _ws
+      return 0
+    }
+    sleep 2
+    _ws=$((_ws + 2))
+  done
+  unset _ws
+  return 1
+}
+
+cleanup_legacy_runtime() {
+  for _cl in $LEGACY_RUNTIME; do
+    [ -e "$_cl" ] && rm -rf "$_cl" 2>/dev/null
+  done
+  unset _cl
   return 0
 }

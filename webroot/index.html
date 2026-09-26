@@ -59,7 +59,7 @@
     .card-icon svg{width:18px;height:18px;}
     .card-body{flex:1;min-width:0;}
     .card-name{font-size:14px;font-weight:600;color:var(--text-hi);margin-bottom:3px;}
-    .card-key{font-size:10px;font-family:var(--mono);color:var(--text-dim);word-break:break-all;}
+    .card-key{font-size:10px;font-family:var(--mono);color:var(--text-dim);overflow-wrap:anywhere;}
     .card-val{display:inline-block;font-size:10px;font-family:var(--mono);padding:1px 6px;border-radius:3px;margin-top:4px;font-weight:700;}
     .card-val.on{background:rgba(126,203,53,0.12);color:var(--green);border:1px solid rgba(126,203,53,0.25);}
     .card-val.off{background:rgba(224,92,92,0.1);color:var(--red);border:1px solid rgba(224,92,92,0.2);}
@@ -173,7 +173,7 @@
 
 <div class="chips">
   <div class="chip">profile <b id="chipProfile">—</b></div>
-  <div class="chip">poll <b id="chipPoll">—</b></div>
+  <div class="chip">reaction <b id="chipPoll">—</b></div>
   <div class="chip">corrections <b id="chipApplies">—</b></div>
   <div class="chip">drift <b id="chipDrift">—</b></div>
 </div>
@@ -219,14 +219,31 @@
       </svg>
     </div>
     <div class="card-body">
-      <div class="card-name">Poll Profile</div>
-      <div class="card-key" id="profileHint">battery vs. responsiveness</div>
+      <div class="card-name">Profile</div>
+      <div class="card-key" id="profileHint">reaction time vs. battery</div>
     </div>
     <div class="spinner"></div>
     <select class="sel" id="sel-profile" onchange="setProfile()">
-      <option value="fast">fast · 5–15s</option>
-      <option value="balanced">balanced · 15–60s</option>
-      <option value="battery">battery · 30–300s</option>
+      <option value="fast">fast</option>
+      <option value="balanced">balanced</option>
+      <option value="battery">battery</option>
+    </select>
+  </div>
+
+  <div class="card" id="card-engine">
+    <div class="card-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="1.8">
+        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+      </svg>
+    </div>
+    <div class="card-body">
+      <div class="card-name">Engine</div>
+      <div class="card-key" id="engineHint">how changes are detected</div>
+    </div>
+    <div class="spinner"></div>
+    <select class="sel" id="sel-engine" onchange="setEngine()">
+      <option value="auto">auto · events</option>
+      <option value="poll">poll · timed</option>
     </select>
   </div>
 
@@ -267,8 +284,9 @@
 <div class="section-title">notes</div>
 <div class="note">
   Configuration lives in <b>/data/adb/dev-options-persist/config</b> and survives module updates.
-  <b>Restore Original</b> puts back the values captured at install time — run it before uninstalling
-  if you want Developer Options visible again.
+  <b>Restore Original</b> puts back the values captured at install time and pauses enforcement until
+  <b>Apply Now</b> or the next reboot. Uninstalling restores them automatically and always leaves
+  Developer Options visible.
 </div>
 
 <div class="footer" id="footer">dev-options-persist</div>
@@ -452,19 +470,23 @@ function renderCards(st) {
     var inverted = (k === 'development_settings_enabled');
     var skipped = (cfg === 'skip' || cfg === '');
 
+    // The switch shows what the config asks for; the badge shows what the
+    // system reports right now, so a paused or drifting value is visible.
     var checked, valText, valCls;
+    var match = (st['MATCH_' + k] === '1');
     if (skipped) {
       checked = false;
       valText = 'UNMANAGED · ' + live;
       valCls = 'neutral';
     } else if (inverted) {
       checked = cfg === '0';
-      valText = (checked ? 'HIDDEN' : 'VISIBLE') + ' · ' + live;
-      valCls = checked ? 'on' : 'off';
+      valText = (live === 'unreadable' ? 'N/A' : (live === '0' ? 'HIDDEN' : 'VISIBLE')) + ' · ' + live;
+      valCls = match ? (checked ? 'on' : 'off') : 'neutral';
     } else {
       checked = cfg === '1';
-      valText = (checked ? 'ON' : 'OFF') + ' · ' + live;
-      valCls = checked ? 'on' : 'off';
+      valText = (live === 'unreadable' ? 'N/A'
+        : (live === '1' ? 'ON' : (live === '0' ? 'OFF' : 'UNSET'))) + ' · ' + (live === '' ? '—' : live);
+      valCls = match ? (checked ? 'on' : 'off') : 'neutral';
     }
 
     html +=
@@ -499,7 +521,9 @@ function renderTable(st) {
       ? '<span class="pill ok">match</span>'
       : (match === 'skip'
           ? '<span class="pill skip">unmanaged</span>'
-          : '<span class="pill bad">drift</span>');
+          : (live === 'unreadable'
+              ? '<span class="pill skip">n/a</span>'
+              : '<span class="pill bad">drift</span>'));
     rows +=
       '<tr>' +
         '<td class="name">' + esc(st['LABEL_' + k] || k) + '<span>' + esc(st['TARGET_' + k] || k) + '</span></td>' +
@@ -531,7 +555,12 @@ async function refreshStatus() {
   var meta = document.getElementById('daemonMeta');
   var drift = parseInt(st.DRIFT, 10) || 0;
 
-  if (st.DAEMON === 'running' && drift === 0) {
+  var events = st.MODE === 'events';
+  if (st.DAEMON !== 'running' && st.PAUSED === '1') {
+    dot.className = 'daemon-dot warn';
+    lbl.textContent = 'paused';
+    lbl.style.color = 'var(--amber)';
+  } else if (st.DAEMON === 'running' && drift === 0) {
     dot.className = 'daemon-dot running';
     lbl.textContent = 'enforcing';
     lbl.style.color = 'var(--green)';
@@ -546,14 +575,23 @@ async function refreshStatus() {
   }
 
   var uptime = st.STARTED && DEVICE_NOW ? fmtDur(DEVICE_NOW - parseInt(st.STARTED, 10)) : '—';
-  meta.textContent = st.DAEMON === 'running'
-    ? 'pid ' + st.DAEMON_PID + ' · up ' + uptime + ' · last fix ' + fmtAgo(st.LAST_APPLY)
-    : 'press Apply Now to restart it · last fix ' + fmtAgo(st.LAST_APPLY);
+  if (st.DAEMON === 'running') {
+    meta.textContent = 'pid ' + st.DAEMON_PID +
+      (events && st.WATCHER_PID && st.WATCHER_PID !== '0' ? ' · watcher ' + st.WATCHER_PID : '') +
+      ' · up ' + uptime + ' · last fix ' + fmtAgo(st.LAST_APPLY);
+  } else if (st.PAUSED === '1') {
+    meta.textContent = 'original values restored · Apply Now resumes enforcement';
+  } else {
+    meta.textContent = 'press Apply Now to restart it · last fix ' + fmtAgo(st.LAST_APPLY);
+  }
 
-  document.getElementById('headerSub').textContent =
-    (st.VERSION || 'v4') + ' · ' + (st.MTIME_GATE === '1' ? 'mtime gate' : 'full poll');
+  var modeText = st.MODE === 'events' ? 'event engine'
+    : (st.MODE === 'poll' ? 'poll engine' : 'not running');
+  document.getElementById('headerSub').textContent = (st.VERSION || '') + ' · ' + modeText;
   document.getElementById('chipProfile').textContent = st.PROFILE || '—';
-  document.getElementById('chipPoll').textContent = (st.POLL_BASE || '?') + '–' + (st.POLL_MAX || '?') + 's';
+  document.getElementById('chipPoll').textContent = st.MODE === 'poll'
+    ? 'every ' + (st.POLL || '?') + 's'
+    : (st.CD_FAST || '?') + 's / ' + (st.CD_SECURE || '?') + 's';
   document.getElementById('chipApplies').textContent = st.APPLIES || '0';
   document.getElementById('chipDrift').textContent = drift;
 
@@ -563,10 +601,19 @@ async function refreshStatus() {
   if (st.LOG_LEVEL) selL.value = st.LOG_LEVEL;
 
   document.getElementById('btn-restore').disabled = st.HAS_ORIGINAL !== '1';
-  document.getElementById('profileHint').textContent =
-    st.MTIME_GATE === '1'
-      ? 'checks are gated on the settings database mtime'
-      : 'stat unavailable — full poll every ' + (st.POLL_MAX || '?') + 's';
+  var selE = document.getElementById('sel-engine');
+  if (st.ENGINE) selE.value = st.ENGINE;
+  var fullMin = Math.round((parseInt(st.FULL, 10) || 0) / 60);
+  document.getElementById('profileHint').textContent = st.MODE === 'poll'
+    ? 'checks every ' + (st.POLL || '?') + 's · full check every ' + fullMin + ' min'
+    : 'reacts in ' + (st.CD_FAST || '?') + 's · secure ' + (st.CD_SECURE || '?') +
+      's · full check every ' + fullMin + ' min';
+  document.getElementById('engineHint').textContent =
+    st.INOTIFYD === '1'
+      ? (st.MODE === 'poll' && st.ENGINE === 'auto'
+          ? 'inotify failed — fell back to timed checks'
+          : 'inotify available')
+      : 'inotifyd not found — timed checks only';
 
   renderCards(st);
   renderTable(st);
@@ -601,13 +648,29 @@ async function setProfile() {
   card.classList.add('loading');
   try {
     var out = parseKV(await svc('--config profile ' + document.getElementById('sel-profile').value, 40000));
-    showToast(out.rc === '0' ? 'Profile updated · active next cycle' : 'Failed',
+    showToast(out.rc === '0' ? 'Profile updated' : 'Failed',
               out.rc === '0' ? 'ok' : 'err');
   } catch (e) {
     showToast('Error: ' + (e.message || e), 'err');
   } finally {
     card.classList.remove('loading');
   }
+  await refreshStatus();
+}
+
+async function setEngine() {
+  var card = document.getElementById('card-engine');
+  card.classList.add('loading');
+  try {
+    var out = parseKV(await svc('--config engine ' + document.getElementById('sel-engine').value, 20000));
+    showToast(out.rc === '0' ? 'Engine updated' : 'Failed', out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  } finally {
+    card.classList.remove('loading');
+  }
+  // The daemon switches engines on its next event; give it a moment.
+  await new Promise(function (r) { setTimeout(r, 1500); });
   await refreshStatus();
 }
 
@@ -629,7 +692,8 @@ var ACTION_IDS = ['btn-apply', 'btn-daemon', 'btn-restore'];
 
 async function doAction(type) {
   if (type === 'restore' &&
-      !confirm('Restore the values captured when the module was installed?')) return;
+      !confirm('Restore the values captured when the module was installed?\n\n' +
+               'Enforcement pauses until Apply Now or the next reboot.')) return;
 
   ACTION_IDS.forEach(function (id) { document.getElementById(id).disabled = true; });
   try {
@@ -646,7 +710,9 @@ async function doAction(type) {
                 out.rc === '0' ? 'ok' : 'err');
     } else if (type === 'restore') {
       out = parseKV(await svc('--restore', 60000));
-      showToast(out.rc === '0' ? 'Original values restored' : 'No snapshot available',
+      showToast(out.rc === '0'
+        ? (out.paused === '1' ? 'Restored · enforcement paused' : 'Original values restored')
+        : 'No snapshot available',
                 out.rc === '0' ? 'ok' : 'err');
     }
   } catch (e) {

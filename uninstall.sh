@@ -1,16 +1,16 @@
 #!/system/bin/sh
 # uninstall.sh — runs when the module is removed.
 #
-# v3 did nothing here and claimed "all values will be reset on next reboot".
-# That was not true: `settings put` writes to the settings database and
-# persist.* properties live in /data/property, so both survive uninstallation.
-# Removing the module used to leave Developer Options hidden forever, with no
-# way left to unhide them.
+# Settings written with `settings put` and persist.* properties survive the
+# module, so everything it changed is put back from the snapshot taken at
+# install time. Developer Options are always left visible: hidden is the one
+# state the user could not undo without the module.
 #
-# Deliberately self-contained: sh/common.sh may already be gone by the time
-# this runs.
+# Self-contained on purpose — it must not depend on anything else in the
+# module directory.
 
-DATA_DIR="/data/adb/dev-options-persist"
+MODULE_ID="dev-options-persist"
+DATA_DIR="/data/adb/$MODULE_ID"
 ORIGINAL_FILE="$DATA_DIR/original"
 LOG_FILE="$DATA_DIR/logs/uninstall.log"
 
@@ -20,72 +20,87 @@ ulog() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" "$*" >>"$LOG_FILE" 2>/dev/null
 }
 
-# Stop the daemon.
-PID=$(cat "$DATA_DIR/daemon.pid" 2>/dev/null)
-case "$PID" in
-  '' | *[!0-9]*) PID="" ;;
-esac
-if [ -n "$PID" ] && [ -d "/proc/$PID" ]; then
-  kill "$PID" 2>/dev/null
+# stop_pid <pidfile> <needle> — only a process that really is ours.
+stop_pid() {
+  _p=""
+  [ -f "$1" ] && read -r _p <"$1" 2>/dev/null
+  case "$_p" in '' | *[!0-9]*) return 0 ;; esac
+  [ -d "/proc/$_p" ] || return 0
+  grep -qF -- "$2" "/proc/$_p/cmdline" 2>/dev/null || return 0
+  kill "$_p" 2>/dev/null
   sleep 1
-  [ -d "/proc/$PID" ] && kill -9 "$PID" 2>/dev/null
-fi
-
-restore() {
-  # Put back what was there before the module ever ran. Falls back to making
-  # Developer Options visible again, which is the one value the user cannot
-  # recover on their own once it is hidden.
-  if [ -f "$ORIGINAL_FILE" ]; then
-    while IFS='=' read -r k v; do
-      case "$k" in
-        '' | '#'*) continue ;;
-      esac
-      case "$v" in
-        '' | null) continue ;;
-      esac
-      # Never restore "Developer Options hidden": that is the one state the
-      # user cannot undo once the module is gone.
-      if [ "$k" = "development_settings_enabled" ] && [ "$v" = "0" ]; then
-        v=1
-      fi
-      case "$k" in
-        adb_enabled | development_settings_enabled)
-          settings put global "$k" "$v" 2>/dev/null && ulog "restored global/$k=$v"
-          ;;
-        extended_power_menu)
-          settings put secure "$k" "$v" 2>/dev/null && ulog "restored secure/$k=$v"
-          ;;
-        adbinstall)
-          setprop persist.security.adbinstall "$v" 2>/dev/null && ulog "restored persist.security.adbinstall=$v"
-          ;;
-        adbinput)
-          setprop persist.security.adbinput "$v" 2>/dev/null && ulog "restored persist.security.adbinput=$v"
-          ;;
-      esac
-    done <"$ORIGINAL_FILE"
-  else
-    settings put global development_settings_enabled 1 2>/dev/null &&
-      ulog "no snapshot — made Developer Options visible again"
-  fi
+  [ -d "/proc/$_p" ] && kill -9 "$_p" 2>/dev/null
+  ulog "stopped pid $_p"
 }
 
-# uninstall.sh can run during post-fs-data, long before system_server exists,
-# so a direct attempt may silently do nothing. Try now, then verify after boot
-# and retry in the background if needed.
+stop_pid "$DATA_DIR/run/daemon.pid" "$MODULE_ID/service.sh"
+stop_pid "$DATA_DIR/run/watcher.pid" "inotifyd"
+stop_pid "$DATA_DIR/daemon.pid" "$MODULE_ID/service.sh" # v4-v5 layout
+
+settings_ready() {
+  case "$(settings get global adb_enabled 2>/dev/null)" in
+    null | [0-9] | [0-9][0-9]) return 0 ;;
+  esac
+  return 1
+}
+
+restore() {
+  if [ ! -f "$ORIGINAL_FILE" ]; then
+    settings put global development_settings_enabled 1 >/dev/null 2>&1 &&
+      ulog "no snapshot — made Developer Options visible again"
+    return 0
+  fi
+  while IFS='=' read -r k v; do
+    v=${v%"$(printf '\r')"}
+    case "$k" in
+      adbinstall | adbinput)
+        case "$v" in '' | [0-9] | [0-9][0-9]) ;; *) continue ;; esac ;;
+      adb_enabled | development_settings_enabled | extended_power_menu)
+        case "$v" in null) ;; '' | *[!0-9]*) continue ;; esac ;;
+      *) continue ;;
+    esac
+    if [ "$k" = development_settings_enabled ]; then
+      case "$v" in 0 | null) v=1 ;; esac
+    fi
+    case "$k" in
+      adb_enabled | development_settings_enabled)
+        if [ "$v" = null ]; then
+          settings delete global "$k" >/dev/null 2>&1 && ulog "restored global/$k (deleted)"
+        else
+          settings put global "$k" "$v" >/dev/null 2>&1 && ulog "restored global/$k=$v"
+        fi ;;
+      extended_power_menu)
+        if [ "$v" = null ]; then
+          settings delete secure "$k" >/dev/null 2>&1 && ulog "restored secure/$k (deleted)"
+        else
+          settings put secure "$k" "$v" >/dev/null 2>&1 && ulog "restored secure/$k=$v"
+        fi ;;
+      adbinstall | adbinput)
+        setprop "persist.security.$k" "$v" 2>/dev/null &&
+          ulog "restored persist.security.$k=${v:-<unset>}" ;;
+    esac
+  done <"$ORIGINAL_FILE"
+}
+
+# Properties can be restored right away. uninstall.sh usually runs early in
+# boot, before the settings service exists, so the settings part is done
+# again once it answers, and only then is the data directory removed.
+ulog "uninstall started"
 restore
 
 (
   i=0
-  while [ "$i" -lt 180 ]; do
-    [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ] && break
+  while [ "$i" -lt 240 ]; do
+    [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ] && settings_ready && break
     sleep 2
     i=$((i + 2))
   done
-  sleep 5
-  if [ "$(settings get global development_settings_enabled 2>/dev/null)" != "1" ]; then
+  if settings_ready; then
     restore
+    ulog "uninstall cleanup finished"
+  else
+    ulog "settings service never answered — settings may not be restored"
   fi
-  ulog "uninstall cleanup finished"
   rm -rf "$DATA_DIR" 2>/dev/null
 ) </dev/null >/dev/null 2>&1 &
 
