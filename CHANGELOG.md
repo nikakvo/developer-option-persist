@@ -2,6 +2,15 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v8
+
+**Module**
+- New card banner in the root manager (SukiSU-Ultra and other managers that support module banners).
+
+No functional changes - hiding Developer Options, the per-setting toggles, mock location management and the WebUI work exactly as in v7. Updating is optional.
+
+---
+
 ## v7
 
 ### Added — mock location app
