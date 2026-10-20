@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="developer-option-persist.png" alt="DNSCrypt Proxy Arm64" width="640">
-</p>
+<p align="center"><img src="developer-option-persist.png" alt="Tears GPS"></p>
 
 # Developer Options Persist
 
