@@ -1,4 +1,4 @@
-<p align="center"><img src="developer-option-persist.png" alt="Tears GPS"></p>
+<p align="center"><img src="developer-option-persist.png" alt="Developer Options Persist"></p>
 
 # Developer Options Persist
 
