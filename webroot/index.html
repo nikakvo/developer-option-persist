@@ -368,12 +368,28 @@ function legacyExec(cmd) {
   return { errno: 0, stdout: out, stderr: '' };
 }
 
+// Which form of ksu.exec works. On a quick reopen the root manager can run
+// the page's first command before it has registered the new page, and that
+// answer never comes. So the check is asked again a moment later, several
+// times, and the first answer wins - instead of waiting seconds for a lost
+// one and then falling back to the slow form that blocks the page.
 async function detectExecMode() {
   if (!hasBridge()) throw new Error('no root bridge');
-  try {
-    var r = await callbackExec('echo dop_ok', 3000);
-    if ((r.stdout || '').indexOf('dop_ok') >= 0) return 'callback';
-  } catch (e) {}
+  var viaCallback = await new Promise(function (resolve) {
+    var done = false;
+    function finish(v) { if (!done) { done = true; resolve(v); } }
+    function ask() {
+      if (done) return;
+      callbackExec('echo dop_ok', 15000).then(function (r) {
+        if ((r.stdout || '').indexOf('dop_ok') >= 0) finish(true);
+      }, function (e) {
+        if (!/timeout/.test(String(e && e.message))) finish(false);
+      });
+    }
+    [0, 400, 1000, 2000, 3500, 6000].forEach(function (t) { setTimeout(ask, t); });
+    setTimeout(function () { finish(false); }, 16000);
+  });
+  if (viaCallback) return 'callback';
   try {
     var l = legacyExec('echo dop_ok');
     if ((l.stdout || '').indexOf('dop_ok') >= 0) return 'legacy';
@@ -769,6 +785,7 @@ async function setProfile() {
     card.classList.remove('loading');
   }
   await refreshStatus();
+  await loadLogs();
 }
 
 async function setEngine() {
@@ -791,13 +808,16 @@ async function setLogLevel() {
   var card = document.getElementById('card-loglevel');
   card.classList.add('loading');
   try {
-    var out = parseKV(await svc('--config log_level ' + document.getElementById('sel-loglevel').value, 20000));
+    var lvl = document.getElementById('sel-loglevel').value;
+    var out = parseKV(await svc('--config log_level ' + lvl, 20000));
     showToast(out.rc === '0' ? 'Log level updated' : 'Failed', out.rc === '0' ? 'ok' : 'err');
+    if (out.rc === '0' && lvl === '2') showDebugFilter();
   } catch (e) {
     showToast('Error: ' + (e.message || e), 'err');
   } finally {
     card.classList.remove('loading');
   }
+  await loadLogs();
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
@@ -840,6 +860,14 @@ async function doAction(type) {
 var activeFilters = new Set(['INFO', 'WARN', 'ERROR']);
 var rawLines = [];
 
+// Choosing 2 (verbose) turns the DBG filter on, so the extra lines show up.
+function showDebugFilter() {
+  if (activeFilters.has('DEBUG')) return;
+  activeFilters.add('DEBUG');
+  var b = document.getElementById('f-debug');
+  if (b) b.classList.add('active');
+}
+
 function toggleFilter(level) {
   var ids = { INFO: 'f-info', WARN: 'f-warn', ERROR: 'f-error', DEBUG: 'f-debug' };
   var btn = document.getElementById(ids[level]);
@@ -852,19 +880,34 @@ function renderLogSize(bytes) {
   document.getElementById('logSize').textContent = fmtBytes(bytes);
 }
 
+// The log refreshes on its own while the page is open. It is drawn again only
+// when its text changed, so a refresh never moves the view by itself.
+var _lastLogRaw = null, _logReading = false;
 async function loadLogs() {
+  if (_logReading) return;
+  _logReading = true;
   try {
     var raw = await svc('--log 300', 30000);
+    if (raw === _lastLogRaw) return;
+    _lastLogRaw = raw;
     rawLines = raw ? raw.split('\n') : [];
     renderLogs();
   } catch (e) {
+    _lastLogRaw = null;
     document.getElementById('logBody').innerHTML =
       '<span class="log-empty">could not read the log</span>';
+  } finally {
+    _logReading = false;
   }
 }
 
 function renderLogs() {
   var body = document.getElementById('logBody');
+  // Follow new lines only when the view is at the bottom; if the user
+  // scrolled up to read older lines, keep that spot.
+  var atBottom = !body.querySelector('.log-line') ||
+    body.scrollTop + body.clientHeight >= body.scrollHeight - 24;
+  var keepTop = body.scrollTop;
   if (!rawLines.length) {
     body.innerHTML = '<span class="log-empty">no log entries</span>';
     return;
@@ -889,6 +932,7 @@ function renderLogs() {
     if (line.indexOf('[DEBUG]') >= 0) cls = 'DEBUG';
     return '<span class="log-line ' + cls + '">' + esc(line) + '</span>';
   }).join('\n');
+  if (!atBottom) { body.scrollTop = keepTop; return; }
   requestAnimationFrame(function () {
     requestAnimationFrame(function () { body.scrollTop = body.scrollHeight; });
   });
@@ -962,12 +1006,16 @@ document.addEventListener('DOMContentLoaded', init);
 // One resume handler, not two — v3 registered both focus and visibilitychange
 // and refreshed twice on every return to the app.
 document.addEventListener('visibilitychange', function () {
-  if (!document.hidden && EXEC_MODE) refreshStatus();
+  if (!document.hidden && EXEC_MODE) { refreshStatus(); loadLogs(); }
 });
 
 setInterval(function () {
   if (!document.hidden && EXEC_MODE && !_busy) refreshStatus();
 }, 30000);
+
+setInterval(function () {
+  if (!document.hidden && EXEC_MODE && !_busy) loadLogs();
+}, 5000);
 </script>
 </body>
 </html>

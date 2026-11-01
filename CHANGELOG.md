@@ -2,6 +2,15 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v8.1
+
+**WebUI**
+- Opens fast again on a quick reopen: no more waiting about 3 seconds and then a slow mode that froze the page on every refresh. Status shows in about a second.
+- The log updates on its own every few seconds while the WebUI is open, and keeps your place when you scroll up to read older lines.
+- Changing the log level shows in the log right away; choosing verbose also turns on the DBG filter.
+
+---
+
 ## v8
 
 **Module**

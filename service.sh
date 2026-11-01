@@ -535,7 +535,9 @@ cmd_config() {
     return 1
   }
   load_config
-  log_info "Config: $1=$2"
+  # A log level change is always written, also when the new level is 0, so
+  # the WebUI log shows it at once.
+  if [ "$1" = log_level ]; then _log INFO "Config: $1=$2"; else log_info "Config: $1=$2"; fi
   daemon_is_running && kill -USR1 "$(daemon_pid)" 2>/dev/null
 
   # Applied right here so the UI sees the result immediately. The daemon
