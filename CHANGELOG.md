@@ -2,6 +2,29 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v9
+
+**Module**
+- USB debugging can be kept on only while a computer is connected: unplugged or on a wall charger, it is off, so banking and game apps that check for it do not see it.
+- New tweaks, all not managed until you turn them on: animation scales, Stay Awake, Verify Apps over USB and the Phantom Process Killer.
+- Custom settings: keep any global, secure or system setting or persist property at your value (up to 32).
+- Export and import of the config (folder /sdcard/dop).
+- Restore Original and uninstall only put back settings the module changed, with the value from right before it changed them. Settings you set to not managed are left alone.
+- Developer Options are made visible on uninstall only if the module hid them.
+- Uninstall waits longer for a slow first boot and keeps the saved values if the settings service never answers.
+- An uninstalled mock location app is noticed right away.
+- Less work for settings that are not managed.
+
+**WebUI**
+- Tabs: Settings, Tweaks, Custom, Runtime and Log.
+- Opens and refreshes much faster; the status updates on its own every 10 seconds.
+- "Original" column and a New Snapshot button on the Runtime tab.
+- New "not managed" link under every managed setting, and a short explanation under every card.
+- The log shows the newest lines first and fills the screen.
+- Help shows the commands in su -c form, reads better on a phone and has a back-to-top arrow.
+
+---
+
 ## v8.1
 
 **WebUI**
@@ -22,12 +45,12 @@ No functional changes - hiding Developer Options, the per-setting toggles, mock 
 
 ## v7
 
-### Added — mock location app
+### Added - mock location app
 
 The mock location app ("Select mock location app" in Developer Options) can
 now be chosen from the WebUI and is kept in place like the other settings.
 
-- It is an AppOp, not a setting: the module does what Settings does — the
+- It is an AppOp, not a setting: the module does what Settings does - the
   chosen app gets `allow`, every other holder `deny`. Mocking works with
   Developer Options hidden.
 - New config key `mock_location_app` (a package name or `skip`); **not managed
@@ -80,7 +103,7 @@ now be chosen from the WebUI and is kept in place like the other settings.
 
 ## v6
 
-### Changed — event-driven enforcement
+### Changed - event-driven enforcement
 
 The daemon no longer polls. Android saves settings by writing
 `settings_*.xml.new` and renaming it into place, and init does the same with
@@ -109,7 +132,7 @@ processes at all.
   file, which survives updates, so a fresh `module.prop` never got
   "Working" back. The status is now compared with `module.prop` itself.
 - **Stale PID file.** A PID was trusted if its command line contained
-  `service.sh` — true for every module. Early-boot PIDs repeat from boot to
+  `service.sh` - true for every module. Early-boot PIDs repeat from boot to
   boot, so a stale file could point at another module's daemon: this one then
   refused to start, and Daemon Stop, update and uninstall could kill the wrong
   process. PIDs are now matched against this module's own path, zombies do not
@@ -164,7 +187,7 @@ processes at all.
 
 ## v5
 
-### Added — built-in help page
+### Added - built-in help page
 
 `webroot/help.html`, reachable from a **HELP** button in the top right of the
 interface. The other modules in this family ship documentation; this one had
@@ -185,7 +208,7 @@ directly.
 
 ## v4.1
 
-### Fixed — the daemon could die after a change from the WebUI
+### Fixed - the daemon could die after a change from the WebUI
 
 `--config profile` restarted the daemon so it would pick up the new intervals.
 That restart was spawned from the manager app's root shell, so the new daemon
@@ -203,14 +226,14 @@ fragile one.
 - **Apply Now** restarts the daemon if it is not running, and says so.
 - The status line tells you what to press when the daemon is stopped.
 
-The "daemon stopped" indicator itself was correct — that is v4's honest PID
+The "daemon stopped" indicator itself was correct - that is v4's honest PID
 check working. v3 would have shown green because a config file existed.
 
 ---
 
 ## v4
 
-### Fixed — battery
+### Fixed - battery
 
 The v3 daemon ran a fixed 3-second loop. Each pass re-read all five config keys
 with `grep | cut | tr` (15 processes), queried three settings and two
@@ -232,7 +255,7 @@ every three seconds around the clock.
 How:
 
 - Config is parsed once into shell variables with a single `while read` loop and
-  reloaded only when its mtime changes — no `grep`/`cut`/`tr` per key.
+  reloaded only when its mtime changes - no `grep`/`cut`/`tr` per key.
 - The expensive checks are gated behind **one** `stat` of
   `settings_global.xml`, `settings_secure.xml` and the config file. If none of
   them changed, no `settings` query happens at all.
@@ -249,7 +272,7 @@ How:
   interpreted as a replacement pattern.
 - A **poll profile** (fast / balanced / battery) is exposed in the WebUI.
 
-### Fixed — data loss
+### Fixed - data loss
 
 - **Configuration is no longer stored inside the module directory.** Magisk and
   KernelSU replace `/data/adb/modules/<id>` wholesale on update, so every module
@@ -257,7 +280,7 @@ How:
   `/data/adb/dev-options-persist/config`, and the old file is migrated on
   install and on boot.
 
-### Fixed — uninstall
+### Fixed - uninstall
 
 - **`uninstall.sh` did nothing** and claimed "all values will be reset on next
   reboot". That was false: `settings put` writes to the settings database and
@@ -271,7 +294,7 @@ How:
   execute long before `system_server` exists.
 - A **Restore Original** action was added to the WebUI for the same purpose.
 
-### Fixed — WebUI
+### Fixed - WebUI
 
 - **Most managers would have shown a dead interface.** The UI only used the
   legacy one-argument `ksu.exec(cmd)`; where a manager exposes only the callback
@@ -291,7 +314,7 @@ How:
   one `config.tmp` filename, so two quick toggles could interleave and lose a
   key. Writes go through `service.sh --config`, which validates the value and
   holds a lock.
-- The external Google Fonts `<link>` was removed — it fails on a device with no
+- The external Google Fonts `<link>` was removed - it fails on a device with no
   network and the font stack falls back anyway.
 - Duplicate `focus` + `visibilitychange` handlers collapsed into one.
 - Added: a **runtime table** (config vs live vs state per key), a filterable
@@ -304,7 +327,7 @@ How:
   misbehaving module gave you nothing to look at.
 - **Single-instance guard** with a PID file; the daemon can be stopped and
   started from the UI.
-- **`skip` value** for any key, meaning "leave this setting alone" — useful for
+- **`skip` value** for any key, meaning "leave this setting alone" - useful for
   `extended_power_menu`, which is Xiaomi-specific and meaningless elsewhere.
 - **`META-INF/com/google/android/update-binary`**, so the zip is flashable on
   Magisk. Without it only KernelSU and APatch could install the module.
@@ -351,7 +374,7 @@ Re-Build
 - Support for KernelSU, KernelSU-Next, SukiSU Ultra
 
 ### Controlled settings
-- `global/adb_enabled` — USB Debugging
-- `global/development_settings_enabled` — Developer Options visibility
-- `secure/extended_power_menu` — Extended Power Menu
-- `persist.security.adbinstall` — Install via USB
+- `global/adb_enabled` - USB Debugging
+- `global/development_settings_enabled` - Developer Options visibility
+- `secure/extended_power_menu` - Extended Power Menu
+- `persist.security.adbinstall` - Install via USB

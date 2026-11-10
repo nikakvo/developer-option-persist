@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Dev Options Persist — Help</title>
+  <title>Dev Options Persist - Help</title>
   <style>
     :root {
       --bg:#0a0a08;--bg2:#0f0f0c;--surface:#141410;--surface2:#1a1a15;
@@ -76,15 +76,27 @@
     tr:last-child td{border-bottom:none;}
     td:first-child{color:var(--text-hi);white-space:nowrap;padding-right:14px;}
 
+    /* Setting list: one block per setting, readable on a narrow phone screen. */
+    .klist{margin:6px 0;}
+    .kitem{padding:9px 0;border-bottom:1px solid var(--border);}
+    .kitem:last-child{border-bottom:none;}
+    .kname{color:var(--text-hi);font-weight:600;font-size:13.5px;}
+    .kdesc{margin-top:2px;font-size:13px;}
+    .kwhere{margin-top:4px;font-family:var(--mono);font-size:11px;color:var(--text-dim);line-height:1.8;}
+    .kwhere code{font-size:11px;}
+
     .note{border-left:2px solid var(--amber);background:var(--amber-dim);padding:10px 12px;border-radius:0 6px 6px 0;margin:10px 0;font-size:13px;}
     .note.warn{border-left-color:var(--red);background:var(--red-dim);}
     .note.ok{border-left-color:var(--green);background:var(--green-dim);}
 
     .footer{text-align:center;padding:28px 16px 8px;font-size:10px;font-family:var(--mono);color:var(--text-dim);}
     .footer a{color:var(--amber);text-decoration:none;}
+    .totop{position:fixed;right:calc(env(safe-area-inset-right,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:40px;height:40px;border-radius:50%;background:var(--surface2);border:1px solid var(--amber);color:var(--amber);display:flex;align-items:center;justify-content:center;text-decoration:none;box-shadow:0 0 10px var(--amber-dim);z-index:20;}
+    .totop:active{opacity:0.5;}
+    .totop svg{width:18px;height:18px;}
   </style>
 </head>
-<body>
+<body id="top">
 
 <div class="header">
   <div class="header-left">
@@ -124,44 +136,82 @@
 <!-- 1 -->
 <div class="sec-title" id="what">1 · what this module does</div>
 <div class="box">
-  <p>Turning Developer Options off in Android's Settings also turns off everything inside it — USB debugging goes with it. This module keeps the switches you care about in the state you chose, while Developer Options themselves stay hidden from the Settings menu.</p>
+  <p>Turning Developer Options off in Android's Settings also turns off everything inside it - USB debugging goes with it. This module keeps the switches you care about in the state you chose, while Developer Options themselves stay hidden from the Settings menu.</p>
   <p>The result: the developer menu is not visible, but ADB keeps working.</p>
   <div class="note">
-    A background daemon watches for anything that changes those values — you, an app, an OTA, a settings reset — and puts them back.
+    A background daemon watches for anything that changes those values - you, an app, an OTA, a settings reset - and puts them back.
   </div>
   <div class="note warn">
-    Tested on a <strong>Poco F6 Pro</strong> with the <strong>Xiaomi.eu ROM</strong> (HyperOS 3, Android 16) and SukiSU-Ultra only. Other devices and ROMs may behave differently — the Xiaomi-specific settings in particular. If the header shows <em>poll engine</em>, change detection fell back to timed checks on your ROM.
+    Tested on a <strong>Poco F6 Pro</strong> with the <strong>Xiaomi.eu ROM</strong> (HyperOS 3, Android 16) and SukiSU-Ultra only. Other devices and ROMs may behave differently - the Xiaomi-specific settings in particular. If the header shows <em>poll engine</em>, change detection fell back to timed checks on your ROM.
   </div>
 </div>
 
 <!-- 2 -->
 <div class="sec-title" id="settings">2 · the settings</div>
 <div class="box">
-  <table>
-    <tr><th>setting</th><th>where it lives</th></tr>
-    <tr><td>USB Debugging</td><td>global / <code>adb_enabled</code></td></tr>
-    <tr><td>Developer Options</td><td>global / <code>development_settings_enabled</code></td></tr>
-    <tr><td>Extended Power Menu</td><td>secure / <code>extended_power_menu</code></td></tr>
-    <tr><td>Install via USB</td><td>prop / <code>persist.security.adbinstall</code></td></tr>
-    <tr><td>USB Debugging (Security)</td><td>prop / <code>persist.security.adbinput</code></td></tr>
-    <tr><td>Mock Location App</td><td>appop / <code>android:mock_location</code></td></tr>
-  </table>
+  <div class="klist">
+    <div class="kitem"><div class="kname">USB Debugging</div>
+      <div class="kdesc">Lets a computer control the phone over adb.</div>
+      <div class="kwhere">global / <code>adb_enabled</code></div></div>
+    <div class="kitem"><div class="kname">Developer Options</div>
+      <div class="kdesc">Hides the Developer Options menu in Settings (the switch is red when hidden). The settings inside keep working.</div>
+      <div class="kwhere">global / <code>development_settings_enabled</code></div></div>
+    <div class="kitem"><div class="kname">Extended Power Menu</div>
+      <div class="kdesc">The Extended power menu switch from Developer Options. Xiaomi / HyperOS only.</div>
+      <div class="kwhere">secure / <code>extended_power_menu</code></div></div>
+    <div class="kitem"><div class="kname">Install via USB</div>
+      <div class="kdesc">Lets you install apps over USB. Xiaomi / HyperOS only.</div>
+      <div class="kwhere">prop / <code>persist.security.adbinstall</code></div></div>
+    <div class="kitem"><div class="kname">USB Debugging (Security)</div>
+      <div class="kdesc">Lets adb grant permissions and simulate taps. Xiaomi / HyperOS only.</div>
+      <div class="kwhere">prop / <code>persist.security.adbinput</code></div></div>
+    <div class="kitem"><div class="kname">Mock Location App</div>
+      <div class="kdesc">The app that may fake the GPS location.</div>
+      <div class="kwhere">appop / <code>android:mock_location</code></div></div>
+  </div>
+
+  <h3>Tweaks tab</h3>
+  <p>Not managed until you pick a value.</p>
+  <div class="klist">
+    <div class="kitem"><div class="kname">Window / Transition / Animator Animation Scale</div>
+      <div class="kdesc">How fast animations play. 0.5x feels faster, off turns them off. Off, 0.5x to 10x.</div>
+      <div class="kwhere">global / <code>window_animation_scale</code><br>global / <code>transition_animation_scale</code><br>global / <code>animator_duration_scale</code></div></div>
+    <div class="kitem"><div class="kname">Stay Awake</div>
+      <div class="kdesc">The screen stays on while the phone is charging (on is stored as 7).</div>
+      <div class="kwhere">global / <code>stay_on_while_plugged_in</code></div></div>
+    <div class="kitem"><div class="kname">Verify Apps over USB</div>
+      <div class="kdesc">Checks apps installed over adb. Off makes adb installs faster.</div>
+      <div class="kwhere">global / <code>verifier_verify_adb_installs</code></div></div>
+    <div class="kitem"><div class="kname">Phantom Process Killer</div>
+      <div class="kdesc">Off stops Android from killing background processes of Termux and similar apps.</div>
+      <div class="kwhere">prop / <code>persist.sys.fflag.override.settings_enable_monitor_phantom_procs</code></div></div>
+  </div>
+  <p>Phantom Process Killer <strong>off</strong> is the same as <em>Disable child process restrictions</em> in Developer Options (Android 12L and newer): Android stops killing the child processes of apps like Termux.</p>
 
   <h3>The inverted one</h3>
-  <p><strong>Developer Options</strong> is the only toggle whose switch means <em>hidden</em>. Green means the menu is hidden from Settings — which is the point of the module. The runtime table shows the raw value, where <code>0</code> is hidden.</p>
+  <p><strong>Developer Options</strong> is the only toggle whose switch means <em>hidden</em>. Green means the menu is hidden from Settings - which is the point of the module. The runtime table shows the raw value, where <code>0</code> is hidden.</p>
 
   <h3>Mock location app</h3>
-  <p>The app Android lets fake your location — what Developer Options calls <em>Select mock location app</em>. It is not a setting but an AppOp: the chosen app gets <code>allow</code>, every other one <code>deny</code>, exactly as Settings does it. Picking the app in this interface is the same as picking it in Developer Options, and works while they are hidden.</p>
+  <p>The app Android lets fake your location - what Developer Options calls <em>Select mock location app</em>. It is not a setting but an AppOp: the chosen app gets <code>allow</code>, every other one <code>deny</code>, exactly as Settings does it. Picking the app in this interface is the same as picking it in Developer Options, and works while they are hidden.</p>
   <p>The picker lists every installed app that asks for the mock location permission, whether or not it has ever been selected, so a newly installed app shows up on its own. It is <strong>not managed</strong> by default.</p>
 
+  <h3>USB debugging only while a computer is connected</h3>
+  <p>Turn on the blue <strong>Only while a computer is connected</strong> switch under USB Debugging (config value <code>usb</code>). It works only while the main USB Debugging switch is on. USB debugging is then on while the phone is plugged into a computer and off when it is unplugged or on a wall charger. Any app can read whether USB debugging is on, so this keeps it off for banking and game apps while you are not using it. Turn the blue switch off to go back to always on.</p>
+  <p>The kernel tells a computer port (<code>SDP</code> / <code>CDP</code> in <code>/sys/class/power_supply/usb/usb_type</code>) from a wall charger (<code>DCP</code>, <code>PD</code>). Those files cannot be watched, so in this mode the daemon reads them every 3 seconds with a shell builtin - no process is started, and the timer sleeps while the phone sleeps. The option is not offered on a device that shows neither file.</p>
+
+  <h3>Custom tab</h3>
+  <p>Keeps any other setting at the value you choose, the same way as the built-in ones. Pick the kind - <strong>global</strong>, <strong>secure</strong> or <strong>system</strong> (Android settings) or <strong>prop</strong> (only <code>persist.*</code> properties) - type the name and the value, and tap <strong>Add</strong>. The form shows the current value while you type the name.</p>
+  <p>Values use letters, digits and <code>. _ , : + -</code>, in the form Android stores them (for example <code>600000</code> for 10 minutes of <code>screen_off_timeout</code>). <code>null</code> keeps a setting deleted. Adding the same name again changes the value; <strong>remove</strong> stops managing it and leaves it as it is. Up to 32 entries.</p>
+  <p>The value from right before the first change is saved, so Restore Original and uninstall put it back. <strong>system</strong> settings get the same cooldown as secure ones: HyperOS rewrites both files every few seconds.</p>
+
   <h3>Xiaomi-specific</h3>
-  <p>The last three exist on Xiaomi / HyperOS. On another manufacturer they either do nothing or never appear, and the runtime table will show a permanent drift. Set them to <code>skip</code> and the daemon will leave them alone.</p>
+  <p>Extended Power Menu, Install via USB and USB Debugging (Security) exist only on Xiaomi / HyperOS. On another manufacturer they either do nothing or never appear, and the runtime table will show a permanent drift. Tap <strong>not managed</strong> under the setting (or set it to <code>skip</code>) and the daemon will leave it alone. Tapping the switch again makes it managed.</p>
 </div>
 
 <!-- 3 -->
 <div class="sec-title" id="how">3 · how enforcement works</div>
 <div class="box">
-  <p>A daemon like this could poll every few seconds and re-read everything. Early versions did, and it cost roughly a million process spawns per day — enough to keep the CPU from settling into deep sleep. Since v6 the daemon does not poll at all: it waits for the system to tell it that something changed.</p>
+  <p>A daemon like this could poll every few seconds and re-read everything. Early versions did, and it cost roughly a million process spawns per day - enough to keep the CPU from settling into deep sleep. Since v6 the daemon does not poll at all: it waits for the system to tell it that something changed.</p>
 
   <h3>The event engine</h3>
   <p>Android saves settings by writing <code>settings_global.xml.new</code> or <code>settings_secure.xml.new</code> and renaming it into place, and init does the same with <code>/data/property/persistent_properties</code> whenever a <code>persist.*</code> property changes. One busybox <code>inotifyd</code> watches those directories, plus the module's own data directory for config changes.</p>
@@ -169,10 +219,10 @@
   <p>The daemon reads those events with the shell's built-in <code>read</code>. Waiting, filtering and keeping time are all builtins, so while nothing happens <strong>the daemon starts no processes at all</strong>.</p>
 
   <h3>Only what changed</h3>
-  <p>An event names the file that changed, and the daemon checks only the keys that live there: a change to the global settings checks USB Debugging and Developer Options, a property change checks the two Xiaomi properties, an AppOps or package change checks the mock location app, and so on.</p>
+  <p>An event names the file that changed, and the daemon checks only the keys that live there: a change to the global settings checks the global ones (USB Debugging, Developer Options, the animation scales and so on), a property change checks the properties, an AppOps or package change checks the mock location app, and so on.</p>
 
   <h3>Cooldowns</h3>
-  <p>HyperOS rewrites <code>settings_secure.xml</code> every few seconds for unrelated reasons. Checks of that file are therefore rate-limited by the profile, while the quiet sources — global settings and properties — are checked within a second or two. A cooldown only delays a check; it never skips one.</p>
+  <p>HyperOS rewrites <code>settings_secure.xml</code> every few seconds for unrelated reasons. Checks of that file are therefore rate-limited by the profile, while the quiet sources - global settings and properties - are checked within a second or two. A cooldown only delays a check; it never skips one.</p>
 
   <h3>Safety net</h3>
   <p>A full verification of every key still runs on a long timer, in case an event is ever missed. If the watcher process dies it is restarted automatically; if it keeps dying, the daemon switches to the poll engine by itself.</p>
@@ -197,7 +247,7 @@
   <p>The first two columns are how soon a change is undone with the event engine. The last one applies only to the poll engine.</p>
   <p><strong>Balanced</strong> is the default and the right answer for almost everyone. With the event engine the profile mainly decides how often the noisy secure settings are looked at; an idle daemon costs nothing in any profile.</p>
   <div class="note">
-    Profile and engine changes take effect immediately — the daemon is told about them and does not need a restart.
+    Profile and engine changes take effect immediately - the daemon is told about them and does not need a restart.
   </div>
 </div>
 
@@ -209,15 +259,15 @@
 
   <h3>Status bar</h3>
   <ul>
-    <li><strong>enforcing</strong> — daemon alive, every managed value matches</li>
-    <li><strong>drift detected</strong> — daemon alive, something does not match yet</li>
-    <li><strong>paused</strong> — original values were restored; nothing is enforced until Apply Now or the next reboot</li>
-    <li><strong>daemon stopped</strong> — nothing is being enforced</li>
+    <li><strong>enforcing</strong> - daemon alive, every managed value matches</li>
+    <li><strong>drift detected</strong> - daemon alive, something does not match yet</li>
+    <li><strong>paused</strong> - original values were restored; nothing is enforced until Apply Now or the next reboot</li>
+    <li><strong>daemon stopped</strong> - nothing is being enforced</li>
   </ul>
   <p>Below it: the daemon's PID, the watcher's PID, uptime and the last correction. Liveness is read from <code>/proc</code>, and a PID only counts if its command line really is this module's daemon.</p>
 
   <h3>Settings cards</h3>
-  <p>The switch is what the config asks for. The badge under the name is what the system reports right now — green when they match, amber when they do not.</p>
+  <p>The switch is what the config asks for. The badge under the name is what the system reports right now - green when they match, amber when they do not.</p>
 
   <h3>Mock Location App card</h3>
   <p>The picker offers <strong>not managed</strong> plus every installed app that asks for the mock location permission. The list comes from a cache. When apps have been installed, updated or removed, only those are checked again, in the background, and the picker fills in when that is done. The very first scan checks every user app and takes a few seconds. The badge shows which app actually holds the permission. If the chosen app is uninstalled, Android drops its permission and the module switches the setting back to <strong>not managed</strong> on its own.</p>
@@ -227,9 +277,11 @@
 
   <h3>Actions</h3>
   <ul>
-    <li><strong>Apply Now</strong> — enforce immediately, and start the daemon if it is not running</li>
-    <li><strong>Restart Daemon</strong> — stop and start it</li>
-    <li><strong>Restore Original</strong> — put back the values from before installation and pause enforcement</li>
+    <li><strong>Apply Now</strong> - enforce immediately, and start the daemon if it is not running</li>
+    <li><strong>Restart Daemon</strong> - stop and start it</li>
+    <li><strong>Restore Original</strong> - put back the values from before the module changed them (the <strong>original</strong> column) and pause enforcement</li>
+    <li><strong>New Snapshot</strong> (under the actions) - take the current values as the new originals</li>
+    <li><strong>Export Config</strong> - save the config to <code>/sdcard/dop</code>; tap <strong>import</strong> next to a file in the list to load it back. Every line is checked first; invalid lines and values this device cannot use are skipped and listed in the log.</li>
   </ul>
 
   <h3>Tuning</h3>
@@ -239,8 +291,9 @@
 <!-- 6 -->
 <div class="sec-title" id="config">6 · configuration file</div>
 <div class="box">
-  <p><code>/data/adb/dev-options-persist/config</code> — outside the module directory, so it survives module updates.</p>
+  <p><code>/data/adb/dev-options-persist/config</code> - outside the module directory, so it survives module updates.</p>
   <pre><span class="cm"># 1 = force on, 0 = force off, skip = leave this setting alone</span>
+<span class="cm"># adb_enabled also takes usb: on only while a computer is connected</span>
 adb_enabled=1
 development_settings_enabled=0
 extended_power_menu=1
@@ -248,6 +301,13 @@ adbinstall=1
 adbinput=1
 <span class="cm"># package name of the mock location app, or skip</span>
 mock_location_app=skip
+<span class="cm"># animation scales: 0 | 0.5 | 1 | 1.5 | 2 | 5 | 10, or skip</span>
+window_animation_scale=skip
+transition_animation_scale=skip
+animator_duration_scale=skip
+stay_on_while_plugged_in=skip
+verifier_verify_adb_installs=skip
+phantom_process_killer=skip
 
 <span class="cm"># profile: fast | balanced | battery</span>
 profile=balanced
@@ -264,42 +324,50 @@ engine=auto</pre>
 <!-- 7 -->
 <div class="sec-title" id="cli">7 · command line</div>
 <div class="box">
-  <p>Everything the interface does goes through <code>service.sh</code>, so you can do all of it from a root shell.</p>
-  <pre>S=/data/adb/modules/dev-options-persist/service.sh
+  <p>Everything the interface does goes through <code>service.sh</code>, so you can do all of it from a root shell or with <code>su -c</code>.</p>
+  <pre>su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status'   <span class="cm"># config, live values, daemon state</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --apply'   <span class="cm"># enforce now</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --restore'   <span class="cm"># what the module changed, pauses enforcement</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --snapshot'   <span class="cm"># today's values become the originals</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --custom-add system screen_off_timeout 600000'   <span class="cm"># global | secure | system | prop</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --custom-del c1'   <span class="cm"># id from --status CUSTOM_KEYS</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --export'   <span class="cm"># config to /sdcard/dop</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --backups'   <span class="cm"># list /sdcard/dop</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --import dop-config-20261110-183000.txt'   <span class="cm"># file name only</span>
 
-sh $S --status                  <span class="cm"># config, live values, daemon state</span>
-sh $S --apply                   <span class="cm"># enforce now</span>
-sh $S --restore                 <span class="cm"># original values, pauses enforcement</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config adb_enabled 1'   <span class="cm"># 1 | 0 | usb | skip</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config profile battery'   <span class="cm"># fast | balanced | battery</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config engine poll'   <span class="cm"># auto | poll</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config mock_location_app com.example.app'   <span class="cm"># or skip</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --mock-apps'   <span class="cm"># apps offered in the picker</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config log_level 2'   <span class="cm"># 0 | 1 | 2</span>
 
-sh $S --config adb_enabled 1    <span class="cm"># 1 | 0 | skip</span>
-sh $S --config profile battery  <span class="cm"># fast | balanced | battery</span>
-sh $S --config engine poll      <span class="cm"># auto | poll</span>
-sh $S --config mock_location_app com.example.app   <span class="cm"># or skip</span>
-sh $S --mock-apps               <span class="cm"># apps offered in the picker</span>
-sh $S --config log_level 2      <span class="cm"># 0 | 1 | 2</span>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --daemon-start'
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --daemon-stop'
 
-sh $S --daemon-start
-sh $S --daemon-stop
-
-sh $S --log 200
-sh $S --clear-log</pre>
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --log 200'
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --clear-log'</pre>
   <p><code>--status</code> prints plain <code>key=value</code> lines, so it is easy to use in a script:</p>
-  <pre>sh $S --status | grep -E '^(DRIFT|MODE|WATCHER_PID)='
-sh $S --status | grep '^LIVE_adb_enabled='</pre>
+  <pre>su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status' | grep -E '^(DRIFT|MODE|WATCHER_PID)='
+su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status' | grep '^LIVE_adb_enabled='</pre>
 </div>
 
 <!-- 8 -->
 <div class="sec-title" id="uninstall">8 · restore &amp; uninstall</div>
 <div class="box">
-  <p>The installer snapshots every managed value <em>before</em> the module touches anything — including whether a setting existed at all and whether a property was set. A value managed by a newer version (like the mock location app after updating) is captured right before the module changes it for the first time.</p>
+  <p>Right before the module changes a setting for the first time, it saves the value that setting had - including whether it existed at all and whether a property was set. Only settings the module has changed are put back. A setting switched to <strong>not managed</strong> is handed back to you: Restore Original and uninstall leave it as it is.</p>
+
+  <h3>Original values and New snapshot</h3>
+  <p>The <strong>original</strong> column on the Runtime tab shows the value each changed setting gets back from Restore Original and uninstall. A dash means the module has not changed that setting, so it is left alone.</p>
+  <p><strong>New Snapshot</strong> under the actions takes the current values of the changed settings as their new originals. Use it when you want today's state to stay after the module is removed - for example USB debugging on. Settings the module has not changed yet still get their snapshot right before the first change.</p>
 
   <h3>Restore Original</h3>
-  <p>Puts that snapshot back and <strong>pauses enforcement</strong>, because a running daemon would otherwise reapply your config within a second. Apply Now, Restart Daemon or a reboot resumes it.</p>
+  <p>Puts those values back and <strong>pauses enforcement</strong>, because a running daemon would otherwise reapply your config within a second. Apply Now, Restart Daemon or a reboot resumes it.</p>
 
   <h3>Uninstall</h3>
-  <p>Removing the module restores the snapshot automatically: settings that did not exist are deleted again and properties that were unset are cleared. Because <code>uninstall.sh</code> runs early in boot, before the settings service exists, the settings part is repeated once the service answers, and only then is the data directory removed.</p>
+  <p>Removing the module puts the values back automatically: settings that did not exist are deleted again and properties that were unset are cleared. Because <code>uninstall.sh</code> runs early in boot, before the settings service exists, the settings part is repeated once the service answers, and only then is the data directory removed. If the service never answers, the saved values are kept in <code>/data/adb/dev-options-persist/original</code>.</p>
   <div class="note warn">
-    Developer Options are always restored as <strong>visible</strong>, whatever the snapshot says. Hidden Developer Options is the one state you could not get out of once the module that hid them is gone.
+    If the module hid Developer Options, they are made <strong>visible</strong> again, so they never stay hidden with no module left to show them.
   </div>
 </div>
 
@@ -310,7 +378,7 @@ sh $S --status | grep '^LIVE_adb_enabled='</pre>
   <p><code>inotifyd</code> is missing or kept exiting, and the daemon fell back on its own. The Engine card says which. Enforcement still works, just on a timer; the log has the reason.</p>
 
   <h3>Daemon shows as stopped</h3>
-  <p>Press <strong>Apply Now</strong> — it restarts the daemon as well as enforcing. Check the log for why it exited. A daemon started from this interface moves itself out of the manager app's cgroups and pins <code>oom_score_adj</code>, so it behaves like a boot-started service.</p>
+  <p>Press <strong>Apply Now</strong> - it restarts the daemon as well as enforcing. Check the log for why it exited. A daemon started from this interface moves itself out of the manager app's cgroups and pins <code>oom_score_adj</code>, so it behaves like a boot-started service.</p>
 
   <h3>Drift that never clears</h3>
   <p>The system refuses the value. The failure is logged once as an error together with the value that was actually read back, and retried on every later change.</p>
@@ -319,7 +387,7 @@ sh $S --status | grep '^LIVE_adb_enabled='</pre>
   <p>The chosen app was uninstalled, so the choice was released (the log says so). Reinstall it and pick it again. A package that is not installed cannot be picked, and never takes the permission away from the current app.</p>
 
   <h3>My mock location app is not in the list</h3>
-  <p>Only apps that ask for <code>android.permission.ACCESS_MOCK_LOCATION</code> can be selected — the same rule Settings uses. Some location spoofers work through LSPosed instead and do not need it.</p>
+  <p>Only apps that ask for <code>android.permission.ACCESS_MOCK_LOCATION</code> can be selected - the same rule Settings uses. Some location spoofers work through LSPosed instead and do not need it.</p>
 
   <h3>extended_power_menu always drifts</h3>
   <p>That setting only exists on Xiaomi / HyperOS. Set it to <code>skip</code>.</p>
@@ -343,7 +411,9 @@ sh $S --status | grep '^LIVE_adb_enabled='</pre>
 
 /data/adb/dev-options-persist/     <span class="cm">(mode 0700)</span>
 ├── config            <span class="cm">your settings</span>
-├── original          <span class="cm">values from before installation</span>
+├── custom            <span class="cm">your custom settings (Custom tab)</span>
+├── managed           <span class="cm">settings the module has changed</span>
+├── original          <span class="cm">values from right before the first change</span>
 ├── logs/service.log  <span class="cm">rotates at 128 KB</span>
 └── run/              <span class="cm">runtime only, cleared on boot</span>
     ├── state         <span class="cm">counters, engine, pids</span>
@@ -358,6 +428,10 @@ sh $S --status | grep '^LIVE_adb_enabled='</pre>
 <div class="footer">
   dev options persist · <a href="https://github.com/nikakvo/developer-option-persist" target="_blank">GitHub →</a>
 </div>
+
+<a class="totop" href="#top" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 15 12 9 18 15"/></svg>
+</a>
 
 <script>
   function goBack() {

@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # shellcheck shell=ash disable=SC1091,SC2034,SC2154
 ##########################################################################################
-# Developer Options Persist — installer (Magisk / KernelSU / APatch)
+# Developer Options Persist - installer (Magisk / KernelSU / APatch)
 ##########################################################################################
 
 SKIPUNZIP=0
@@ -43,6 +43,9 @@ ensure_config
 # the previous version is left alone: it keeps enforcing until the reboot
 # switches over to this version.
 if [ ! -f "$ORIGINAL_FILE" ]; then
+  # Fresh install: nothing has been written yet. Each key is recorded as
+  # managed the first time the module really changes it.
+  [ -f "$TOUCHED_FILE" ] || { : >"$TOUCHED_FILE"; chmod 600 "$TOUCHED_FILE" 2>/dev/null; }
   if capture_originals; then
     ui_print "- Captured current values for a clean uninstall"
   else

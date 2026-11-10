@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # shellcheck shell=ash disable=SC1091,SC3043,SC2034,SC2154,SC3045
 #
-# service.sh — boot flow, the enforcement daemon, and every command the WebUI
+# service.sh - boot flow, the enforcement daemon, and every command the WebUI
 # calls.
 #
 # How the daemon stays cheap (v6):
@@ -23,6 +23,21 @@
 #   Without inotifyd (or with engine=poll) the daemon falls back to a timed
 #   poll that stats the same files and checks only what changed.
 
+# The WebUI and the command line start this under the system shell (mksh).
+# There every $(...) costs about 20 ms on HyperOS, against under 2 ms in
+# busybox ash, and --status took 2.5 s instead of 0.4 s. So it re-runs
+# itself under the root manager's busybox, as the boot scripts already do.
+if [ -z "$BB_ASH_VERSION" ] && [ -z "$DOP_REEXEC" ]; then
+  for _bb in /data/adb/ksu/bin/busybox /data/adb/magisk/busybox /data/adb/ap/bin/busybox; do
+    if [ -x "$_bb" ] && [ -f "$0" ]; then
+      DOP_REEXEC=1
+      export DOP_REEXEC
+      exec "$_bb" sh "$0" "$@"
+    fi
+  done
+  unset _bb
+fi
+
 MODDIR="${0%/*}"
 case "$MODDIR" in
   '' | "$0" | .) MODDIR="/data/adb/modules/dev-options-persist" ;;
@@ -41,16 +56,63 @@ unset _k
 
 APPLIED=0
 
-# check_keys <keys> — verify and correct. Returns 1 if the apply lock was
+# check_keys <keys> - verify and correct. Returns 1 if the apply lock was
 # busy (another process is applying right now); the caller retries later.
 check_keys() {
-  lock_acquire "$APPLY_LOCK" 3 || return 1
   APPLIED=0
+  # Nothing to do for keys that are not managed and were never written:
+  # no lock, no process at all (HyperOS rewrites settings_secure.xml every
+  # few seconds, also when extended_power_menu is skip).
+  _ck_need=0
+  for _ck_k in $1; do
+    eval "_ck_want=\$CFG_$_ck_k"
+    if [ "$_ck_want" != skip ] || is_touched "$_ck_k"; then
+      _ck_need=1
+      break
+    fi
+  done
+  if [ "$_ck_need" -eq 0 ]; then
+    for _ck_k in $1; do
+      eval "RES_$_ck_k=skip"
+    done
+    refresh_status
+    unset _ck_k _ck_want _ck_need
+    return 0
+  fi
+
+  lock_acquire "$APPLY_LOCK" 3 || return 1
   for _ck_k in $1; do
     eval "_ck_want=\$CFG_$_ck_k"
     eval "_ck_prev=\$RES_$_ck_k"
+    if [ "$_ck_want" = skip ] && is_touched "$_ck_k"; then
+      # The key is about to be handed back. The config this pass started
+      # with may be stale (the WebUI can have managed the key again a moment
+      # ago), so the file is read once more first.
+      load_config
+      eval "_ck_want=\$CFG_$_ck_k"
+      if [ "$_ck_want" = skip ]; then
+        # Handed back to the user: from now on Restore Original and
+        # uninstall leave this key alone. An invalid value in a hand-edited
+        # file only counts as skip for now; it does not hand the key back.
+        case "$CFG_BAD " in
+          *" $_ck_k="*) ;;
+          *)
+            set_touched "$_ck_k" 0
+            log_info "$_ck_k: no longer managed - left as it is" ;;
+        esac
+      fi
+    fi
     if [ "$_ck_want" = skip ]; then
       eval "RES_$_ck_k=skip"
+      continue
+    fi
+    # adb_enabled=usb: the wanted value follows the cable.
+    key_want "$_ck_k"
+    _ck_want=$WANT
+    if [ "$_ck_want" = nodetect ]; then
+      [ "$_ck_prev" = fail ] ||
+        log_error "$_ck_k=usb: this device does not show the USB cable state - USB debugging left as it is"
+      eval "RES_$_ck_k=fail"
       continue
     fi
 
@@ -58,12 +120,12 @@ check_keys() {
       # During a reboot the services go away before the daemon is killed;
       # that is expected, and the rest of the pass is skipped.
       if system_down; then
-        log_debug "$_ck_k: system shutting down — checks skipped"
+        log_debug "$_ck_k: system shutting down - checks skipped"
         eval "RES_$_ck_k=unread"
         break
       fi
       [ "$_ck_prev" = unread ] ||
-        log_warn "$_ck_k: settings service not answering — will retry"
+        log_warn "$_ck_k: settings service not answering - will retry"
       eval "RES_$_ck_k=unread"
       continue
     fi
@@ -75,15 +137,17 @@ check_keys() {
     # an unset-looking property then usually just means the property service
     # has stopped.
     if system_down; then
-      log_debug "$_ck_k: system shutting down — not correcting"
+      log_debug "$_ck_k: system shutting down - not correcting"
       break
     fi
 
-    # A key added in a later version has no snapshot yet: take it now, right
-    # before the module changes that value for the first time.
-    if [ -f "$ORIGINAL_FILE" ] && ! grep -q "^$_ck_k=" "$ORIGINAL_FILE" 2>/dev/null; then
-      printf '%s=%s\n' "$_ck_k" "$LIVE" >>"$ORIGINAL_FILE"
-      log_info "Captured original $_ck_k=${LIVE:-<unset>}"
+    # The first write since the module took this key over: the snapshot
+    # gets the value from right before it, and the key is marked as one to
+    # put back on Restore Original and uninstall.
+    if ! is_touched "$_ck_k"; then
+      set_original "$_ck_k" "$LIVE_RAW"
+      set_touched "$_ck_k" 1
+      log_info "Captured original $_ck_k=${LIVE_RAW:-<unset>}"
     fi
 
     _ck_old=${LIVE:-<unset>}
@@ -99,8 +163,9 @@ check_keys() {
       if [ "$_ck_k" = mock_location_app ] && [ "$(pkg_state "$_ck_want")" = missing ]; then
         if write_cfg mock_location_app skip; then
           CFG_mock_location_app=skip
+          set_touched mock_location_app 0
           eval "RES_$_ck_k=skip"
-          log_info "mock_location_app: $_ck_want was uninstalled — no longer managed"
+          log_info "mock_location_app: $_ck_want was uninstalled - no longer managed"
         fi
         continue
       fi
@@ -108,9 +173,9 @@ check_keys() {
       # is "not answering", not a failed write.
       if ! read_live "$_ck_k"; then
         if system_down; then
-          log_debug "$_ck_k: system shutting down — checks skipped"
+          log_debug "$_ck_k: system shutting down - checks skipped"
         elif [ "$_ck_prev" != unread ]; then
-          log_warn "$_ck_k: settings service not answering — will retry"
+          log_warn "$_ck_k: settings service not answering - will retry"
         fi
         eval "RES_$_ck_k=unread"
         continue
@@ -129,11 +194,11 @@ check_keys() {
     log_rotate
   fi
   refresh_status
-  unset _ck_k _ck_want _ck_prev _ck_old
+  unset _ck_k _ck_want _ck_prev _ck_old _ck_need
   return 0
 }
 
-# refresh_status — Not Working if any key failed; Working once every managed
+# refresh_status - Not Working if any key failed; Working once every managed
 # key has been verified. While the settings service is down the previous
 # status is kept rather than flapping.
 refresh_status() {
@@ -184,7 +249,7 @@ apply_profile() {
   ACTIVE_PROFILE=$CFG_profile
 }
 
-# on_config_change — reload, then re-check everything against the new values.
+# on_config_change - reload, then re-check everything against the new values.
 on_config_change() {
   _occ_engine=$CFG_engine
   load_config warn
@@ -197,7 +262,7 @@ on_config_change() {
     log_info "Profile is now $CFG_profile"
   fi
   if [ "$CFG_engine" != "$_occ_engine" ]; then
-    log_info "Engine setting changed to $CFG_engine — switching"
+    log_info "Engine setting changed to $CFG_engine - switching"
     RESELECT=1
   fi
   DG=1 DS=1 DP=1 DA=1
@@ -205,7 +270,34 @@ on_config_change() {
   unset _occ_engine
 }
 
-# process_dirty — run the checks that are due. Cooldowns only delay a check;
+# usb_watch - with adb_enabled=usb, a cable change makes the global keys due
+# at once. Builtins only; called on every pass of the daemon loop.
+CABLE_LAST=""
+usb_watch() {
+  if [ "$CFG_adb_enabled" != usb ]; then
+    CABLE_LAST=""
+    return 0
+  fi
+  usb_cable
+  [ "$CABLE" = "$CABLE_LAST" ] && return 0
+  if [ -n "$CABLE_LAST" ]; then
+    case "$CABLE" in
+      1) log_info "USB: connected to a computer" ;;
+      0) log_info "USB: no computer connected" ;;
+    esac
+  fi
+  CABLE_LAST=$CABLE
+  DG=1
+  DUE_G=0
+}
+
+# usb_cap - how long the daemon may wait before the next usb_watch, into T.
+usb_cap() {
+  [ "$CFG_adb_enabled" = usb ] && [ "$T" -gt "$USB_POLL" ] && T=$USB_POLL
+  return 0
+}
+
+# process_dirty - run the checks that are due. Cooldowns only delay a check;
 # a dirty flag is never dropped without the check having run.
 process_dirty() {
   now_up
@@ -234,7 +326,7 @@ process_dirty() {
   return 0
 }
 
-# next_timeout <cap> — seconds until the next due check, into T.
+# next_timeout <cap> - seconds until the next due check, into T.
 next_timeout() {
   T=$((NEXT_FULL - NOW))
   [ "$DG" -eq 1 ] && [ $((DUE_G - NOW)) -lt "$T" ] && T=$((DUE_G - NOW))
@@ -258,7 +350,9 @@ start_watcher() {
   # every read into an instant EOF. Death is detected by pid_alive instead.
   exec 3<>"$FIFO"
   # shellcheck disable=SC2086
-  $CMD_INOTIFYD - "$SETTINGS_DIR:y" "$PROP_DIR:y" "$SYSTEM_DIR:y" "$DATA_DIR:wy" \
+  # packages.xml is written in place (Android 14+ ResilientAtomicFile), so
+  # /data/system also needs close-write events, not only renames.
+  $CMD_INOTIFYD - "$SETTINGS_DIR:y" "$PROP_DIR:y" "$SYSTEM_DIR:wy" "$DATA_DIR:wy" \
     >&3 2>/dev/null </dev/null &
   WPID=$!
   echo "$WPID" >"$WATCHER_PID_FILE" 2>/dev/null
@@ -274,7 +368,7 @@ stop_watcher() {
   rm -f "$FIFO" "$WATCHER_PID_FILE" 2>/dev/null
 }
 
-# restart_watcher — returns 1 after five restarts in ten minutes, which means
+# restart_watcher - returns 1 after five restarts in ten minutes, which means
 # inotify does not work here and the poll engine should take over.
 restart_watcher() {
   now_up
@@ -284,7 +378,7 @@ restart_watcher() {
   fi
   W_RESTARTS=$((W_RESTARTS + 1))
   [ "$W_RESTARTS" -gt 5 ] && return 1
-  log_warn "Event watcher exited — restarting it"
+  log_warn "Event watcher exited - restarting it"
   stop_watcher
   start_watcher || return 1
   # Anything could have changed while it was down.
@@ -294,7 +388,7 @@ restart_watcher() {
 
 loop_events() {
   if ! start_watcher; then
-    log_warn "Could not start the event watcher — using the poll engine"
+    log_warn "Could not start the event watcher - using the poll engine"
     return 2
   fi
   write_state "MODE=events" "INTERVAL=0"
@@ -303,6 +397,7 @@ loop_events() {
   while :; do
     now_up
     next_timeout "$WATCH_CAP"
+    usb_cap
     _ev="" _dir="" _name=""
     WAKE=0
     if read -t "$T" -r _ev _dir _name <&3; then
@@ -313,7 +408,7 @@ loop_events() {
         "$SETTINGS_DIR")
           case "$_name" in
             settings_global.xml) DG=1 ;;
-            settings_secure.xml) DS=1 ;;
+            settings_secure.xml | settings_system.xml) DS=1 ;;
           esac ;;
         "$PROP_DIR")
           [ "$_name" = persistent_properties ] && DP=1 ;;
@@ -324,15 +419,18 @@ loop_events() {
             appops_accesses.xml | appops.xml | packages.xml) DA=1 ;;
           esac ;;
         "$DATA_DIR")
-          [ "$_name" = config ] && on_config_change ;;
+          case "$_name" in
+            config | custom) on_config_change ;;
+          esac ;;
       esac
     elif ! pid_alive "$WPID"; then
       restart_watcher || {
-        log_error "Event watcher keeps exiting — switching to the poll engine"
+        log_error "Event watcher keeps exiting - switching to the poll engine"
         stop_watcher
         return 2
       }
     fi
+    usb_watch
     process_dirty
     if [ "$RESELECT" -eq 1 ]; then
       stop_watcher
@@ -342,25 +440,26 @@ loop_events() {
 }
 
 # ── Poll engine ───────────────────────────────────────────────────────────────
-# poll_fingerprint — "<file> <mtime>" per existing file. Parsed by name, so
+# poll_fingerprint - "<file> <mtime>" per existing file. Parsed by name, so
 # a missing file cannot shift the others.
 poll_fingerprint() {
   [ -n "$CMD_STAT" ] || return 0
   # shellcheck disable=SC2086
   $CMD_STAT -c '%n %Y' "$SETTINGS_GLOBAL_XML" "$SETTINGS_SECURE_XML" \
-    "$PROP_FILE" "$CONFIG_FILE" "$SYSTEM_DIR/appops_accesses.xml" \
+    "$SETTINGS_SYSTEM_XML" "$PROP_FILE" "$CONFIG_FILE" "$CUSTOM_FILE" \
+    "$SYSTEM_DIR/appops_accesses.xml" \
     "$SYSTEM_DIR/appops.xml" "$PACKAGES_XML" 2>/dev/null
 }
 
-# read_fingerprint — sets F_G F_S F_P F_C F_A from poll_fingerprint.
+# read_fingerprint - sets F_G F_S F_P F_C F_A from poll_fingerprint.
 read_fingerprint() {
   F_G="" F_S="" F_P="" F_C="" F_A=""
   while read -r _rf_n _rf_t; do
     case "$_rf_n" in
       "$SETTINGS_GLOBAL_XML") F_G=$_rf_t ;;
-      "$SETTINGS_SECURE_XML") F_S=$_rf_t ;;
+      "$SETTINGS_SECURE_XML" | "$SETTINGS_SYSTEM_XML") F_S="$F_S$_rf_t." ;;
       "$PROP_FILE") F_P=$_rf_t ;;
-      "$CONFIG_FILE") F_C=$_rf_t ;;
+      "$CONFIG_FILE" | "$CUSTOM_FILE") F_C="$F_C$_rf_t." ;;
       *) F_A="$F_A$_rf_t." ;;
     esac
   done <<FP
@@ -374,12 +473,27 @@ loop_poll() {
   log_info "Poll engine running (every ${POLL}s, full check every ${FULL}s)"
   read_fingerprint
   _pg=$F_G _ps=$F_S _pp=$F_P _pc=$F_C _pa=$F_A
+  now_up
+  _pnext=$((NOW + POLL))
 
   while :; do
-    sleep "$POLL" &
+    # With adb_enabled=usb the tick is shortened to USB_POLL for the cable
+    # check; the files are still compared only once per POLL.
+    T=$POLL
+    usb_cap
+    sleep "$T" &
     SLEEP_PID=$!
     wait "$SLEEP_PID"
     SLEEP_PID=""
+    now_up
+    usb_watch
+    if [ "$NOW" -lt "$_pnext" ] && [ "$WAKE" -eq 0 ]; then
+      DUE_G=0
+      process_dirty
+      [ "$RESELECT" -eq 1 ] && return 0
+      continue
+    fi
+    _pnext=$((NOW + POLL))
 
     if [ -n "$CMD_STAT" ]; then
       read_fingerprint
@@ -411,7 +525,7 @@ loop_poll() {
 # ── Daemon entry ──────────────────────────────────────────────────────────────
 daemon_main() {
   if daemon_is_running && [ "$(daemon_pid)" != "$$" ]; then
-    log_warn "Daemon already running (pid $(daemon_pid)) — not starting a second one"
+    log_warn "Daemon already running (pid $(daemon_pid)) - not starting a second one"
     return 0
   fi
 
@@ -447,7 +561,7 @@ daemon_main() {
     fi
     if [ "$_dm_rc" -eq 2 ]; then
       [ "$CFG_engine" = auto ] && [ -z "$CMD_INOTIFYD" ] &&
-        log_warn "busybox inotifyd not found — using the poll engine"
+        log_warn "busybox inotifyd not found - using the poll engine"
       loop_poll
     fi
   done
@@ -469,7 +583,7 @@ cmd_apply() {
     if [ "$(read_state_num PAUSED)" -eq 1 ]; then
       log_info "Resuming enforcement"
     else
-      log_warn "Daemon was not running — starting it"
+      log_warn "Daemon was not running - starting it"
     fi
     cmd_daemon_start >/dev/null
     daemon_is_running && echo "daemon=restarted" || echo "daemon=failed"
@@ -483,6 +597,7 @@ cmd_restore() {
     echo "rc=1"
     return 1
   fi
+  load_config
   log_sep "Restoring original values"
   # A running daemon would put the managed values straight back, so
   # enforcement is paused until Apply Now or the next reboot.
@@ -497,7 +612,7 @@ cmd_restore() {
   lock_release "$APPLY_LOCK"
   if [ "$_cr_paused" -eq 1 ]; then
     write_state "PAUSED=1"
-    log_info "Enforcement paused — press Apply Now or reboot to resume"
+    log_info "Enforcement paused - press Apply Now or reboot to resume"
   fi
   echo "restored=$RESTORED"
   echo "paused=$_cr_paused"
@@ -506,9 +621,425 @@ cmd_restore() {
   return 0
 }
 
+# --snapshot - takes the current value of every setting the module has
+# changed as its new original, so Restore Original and uninstall put back
+# today's values instead of the ones from before the module. Keys the module
+# has not written yet keep their normal behaviour (snapshot right before the
+# first write).
+cmd_snapshot() {
+  load_config
+  ensure_touched
+  if ! lock_acquire "$APPLY_LOCK" 5; then
+    echo "error=busy"
+    echo "rc=1"
+    return 1
+  fi
+  _cs_n=0
+  _cs_bad=0
+  for _cs_k in $KEYS; do
+    is_touched "$_cs_k" || continue
+    if read_live "$_cs_k"; then
+      set_original "$_cs_k" "$LIVE_RAW"
+      log_info "snapshot: $_cs_k=$LIVE_RAW"
+      _cs_n=$((_cs_n + 1))
+    else
+      log_warn "snapshot: $_cs_k unreadable - old original kept"
+      _cs_bad=$((_cs_bad + 1))
+    fi
+  done
+  lock_release "$APPLY_LOCK"
+  log_info "New snapshot taken: $_cs_n value(s), $_cs_bad unreadable"
+  echo "snapped=$_cs_n"
+  echo "unreadable=$_cs_bad"
+  echo "rc=0"
+  unset _cs_n _cs_bad _cs_k
+  return 0
+}
+
+# --export - writes the current config (managed keys + tuning, already
+# validated by load_config) to EXPORT_DIR/dop-config-<date>.txt.
+cmd_export() {
+  load_config
+  if ! mkdir -p "$EXPORT_DIR" 2>/dev/null || [ ! -d "$EXPORT_DIR" ]; then
+    log_error "Export: cannot create $EXPORT_DIR"
+    echo "error=no-dir"
+    echo "rc=1"
+    return 1
+  fi
+  _ce_name="dop-config-$(date '+%Y%m%d-%H%M%S' 2>/dev/null).txt"
+  _ce_tmp="$EXPORT_DIR/.$_ce_name.tmp"
+  {
+    printf '# Dev Options Persist config export\n'
+    printf '# version '; module_version; printf '\n'
+    printf '# created %s\n' "$(_ts)"
+    for _ce_k in $BASE_KEYS; do
+      eval "_ce_v=\$CFG_$_ce_k"
+      printf '%s=%s\n' "$_ce_k" "$_ce_v"
+    done
+    for _ce_k in $CUSTOM_KEYS; do
+      key_info "$_ce_k"
+      eval "_ce_v=\$CFG_$_ce_k"
+      printf 'custom=%s %s %s\n' "$KIND" "$TARGET" "$_ce_v"
+    done
+    printf 'profile=%s\nlog_level=%s\nengine=%s\n' "$CFG_profile" "$CFG_log_level" "$CFG_engine"
+  } >"$_ce_tmp" 2>/dev/null
+  if [ -s "$_ce_tmp" ] && mv -f "$_ce_tmp" "$EXPORT_DIR/$_ce_name" 2>/dev/null; then
+    log_info "Export: config saved to $EXPORT_DIR/$_ce_name"
+    echo "file=$_ce_name"
+    echo "dir=$EXPORT_DIR"
+    echo "rc=0"
+    _ce_rc=0
+  else
+    rm -f "$_ce_tmp" 2>/dev/null
+    log_error "Export: could not write $EXPORT_DIR/$_ce_name"
+    echo "error=write"
+    echo "rc=1"
+    _ce_rc=1
+  fi
+  unset _ce_name _ce_tmp _ce_k _ce_v
+  return "$_ce_rc"
+}
+
+# --backups - lists the config files in EXPORT_DIR, newest first:
+# BACKUP=<name>|<size in bytes>
+cmd_backups() {
+  echo "dir=$EXPORT_DIR"
+  if [ -d "$EXPORT_DIR" ]; then
+    # ls -t sorts by time; names are checked below, so odd files are skipped.
+    for _cb_f in $(ls -t "$EXPORT_DIR" 2>/dev/null); do
+      case "$_cb_f" in
+        *[!A-Za-z0-9._-]* | .*) continue ;;
+        *.txt | *.conf) ;;
+        *) continue ;;
+      esac
+      [ -f "$EXPORT_DIR/$_cb_f" ] || continue
+      echo "BACKUP=$_cb_f|$(file_size "$EXPORT_DIR/$_cb_f")"
+    done
+  fi
+  echo "rc=0"
+  unset _cb_f
+}
+
+# --import <file name> - reads a config file from EXPORT_DIR and applies
+# every valid line through --config, so each value gets the same checks as a
+# tap in the WebUI. Invalid or unknown lines are skipped and logged.
+cmd_import() {
+  case "$1" in
+    '' | *[!A-Za-z0-9._-]* | .*)
+      echo "error=bad-name"
+      echo "rc=1"
+      return 1 ;;
+  esac
+  _ci_f="$EXPORT_DIR/$1"
+  if [ ! -f "$_ci_f" ]; then
+    echo "error=not-found"
+    echo "rc=1"
+    return 1
+  fi
+  # A config file is a few hundred bytes; anything big is not one.
+  if [ "$(file_size "$_ci_f")" -gt 16384 ]; then
+    log_warn "Import: $1 is too big to be a config file - ignored"
+    echo "error=too-big"
+    echo "rc=1"
+    return 1
+  fi
+  log_sep "Importing config from $1"
+  load_config
+  _ci_set=0
+  _ci_same=0
+  _ci_bad=0
+  _ci_pairs=""
+  _ci_cust=""
+  while IFS= read -r _ci_l || [ -n "$_ci_l" ]; do
+    case "$_ci_l" in
+      *=*) ;;
+      *) continue ;;
+    esac
+    _t=${_ci_l%%=*}
+    _trim
+    _ci_k=$_t
+    _t=${_ci_l#*=}
+    _trim
+    _ci_v=$_t
+    case "$_ci_k" in
+      '' | '#'*) continue ;;
+    esac
+    # custom=<kind> <target> <value>
+    if [ "$_ci_k" = custom ]; then
+      set -f
+      # shellcheck disable=SC2086
+      set -- $_ci_v
+      set +f
+      if [ "$#" -eq 3 ] && valid_custom_target "$1" "$2" && valid_custom_value "$3"; then
+        _ci_cust="$_ci_cust $1|$2|$3"
+      else
+        log_warn "Import: skipped invalid line: custom=$_ci_v"
+        _ci_bad=$((_ci_bad + 1))
+      fi
+      continue
+    fi
+    _ci_ok=0
+    case " $BASE_KEYS " in
+      *" $_ci_k "*) valid_value "$_ci_k" "$_ci_v" && _ci_ok=1 ;;
+      *)
+        case "$_ci_k:$_ci_v" in
+          profile:fast | profile:balanced | profile:battery) _ci_ok=1 ;;
+          log_level:0 | log_level:1 | log_level:2) _ci_ok=1 ;;
+          engine:auto | engine:poll) _ci_ok=1 ;;
+        esac ;;
+    esac
+    if [ "$_ci_ok" -ne 1 ]; then
+      log_warn "Import: skipped invalid line: $_ci_k=$_ci_v"
+      _ci_bad=$((_ci_bad + 1))
+      continue
+    fi
+    _ci_pairs="$_ci_pairs $_ci_k=$_ci_v"
+  done <"$_ci_f"
+
+  # Applied after reading, so the file is closed before any write.
+  for _ci_p in $_ci_pairs; do
+    _ci_k=${_ci_p%%=*}
+    _ci_v=${_ci_p#*=}
+    load_config
+    eval "_ci_cur=\$CFG_$_ci_k"
+    if [ "$_ci_cur" = "$_ci_v" ]; then
+      _ci_same=$((_ci_same + 1))
+      continue
+    fi
+    case "$(cmd_config "$_ci_k" "$_ci_v")" in
+      *rc=0*) _ci_set=$((_ci_set + 1)) ;;
+      *)
+        log_warn "Import: $_ci_k=$_ci_v not applied on this device"
+        _ci_bad=$((_ci_bad + 1)) ;;
+    esac
+  done
+  for _ci_p in $_ci_cust; do
+    _ci_kind=${_ci_p%%|*}
+    _ci_v=${_ci_p##*|}
+    _ci_t=${_ci_p#*|}
+    _ci_t=${_ci_t%|*}
+    load_config
+    _ci_have=0
+    for _ci_k in $CUSTOM_KEYS; do
+      key_info "$_ci_k"
+      eval "_ci_cur=\$CFG_$_ci_k"
+      [ "$KIND" = "$_ci_kind" ] && [ "$TARGET" = "$_ci_t" ] && [ "$_ci_cur" = "$_ci_v" ] && _ci_have=1
+    done
+    if [ "$_ci_have" -eq 1 ]; then
+      _ci_same=$((_ci_same + 1))
+      continue
+    fi
+    case "$(cmd_custom_add "$_ci_kind" "$_ci_t" "$_ci_v")" in
+      *rc=0*) _ci_set=$((_ci_set + 1)) ;;
+      *)
+        log_warn "Import: custom $_ci_kind/$_ci_t=$_ci_v not added"
+        _ci_bad=$((_ci_bad + 1)) ;;
+    esac
+  done
+  log_info "Import done: $_ci_set changed, $_ci_same already set, $_ci_bad skipped"
+  echo "changed=$_ci_set"
+  echo "same=$_ci_same"
+  echo "skipped=$_ci_bad"
+  echo "rc=0"
+  unset _ci_f _ci_set _ci_same _ci_bad _ci_pairs _ci_l _ci_k _ci_v _ci_ok _ci_p _ci_cur _t \
+    _ci_cust _ci_kind _ci_t _ci_have
+  return 0
+}
+
+# write_custom <skip id> <set id> <kind> <target> <value> - rewrites
+# CUSTOM_FILE from the loaded custom keys: drops <skip id>, and sets (or
+# appends) <set id>. Needs load_config first.
+write_custom() {
+  lock_acquire "$CONFIG_LOCK" 5 || {
+    log_warn "config lock busy, custom keys not written"
+    return 1
+  }
+  _wcu_tmp="$CUSTOM_FILE.tmp.$$"
+  _wcu_done=0
+  {
+    printf '# Custom keys: <id> <kind> <target> <value>. Managed by the WebUI.\n'
+    for _wcu_k in $CUSTOM_KEYS; do
+      [ "$_wcu_k" = "$1" ] && continue
+      if [ "$_wcu_k" = "$2" ]; then
+        printf '%s %s %s %s\n' "$2" "$3" "$4" "$5"
+        _wcu_done=1
+        continue
+      fi
+      key_info "$_wcu_k"
+      eval "_wcu_v=\$CFG_$_wcu_k"
+      printf '%s %s %s %s\n' "$_wcu_k" "$KIND" "$TARGET" "$_wcu_v"
+    done
+    [ -n "$2" ] && [ "$_wcu_done" -eq 0 ] && printf '%s %s %s %s\n' "$2" "$3" "$4" "$5"
+  } >"$_wcu_tmp" 2>/dev/null
+  _wcu_rc=1
+  if [ -s "$_wcu_tmp" ]; then
+    chmod 600 "$_wcu_tmp" 2>/dev/null
+    mv -f "$_wcu_tmp" "$CUSTOM_FILE" 2>/dev/null && _wcu_rc=0
+  fi
+  rm -f "$_wcu_tmp" 2>/dev/null
+  lock_release "$CONFIG_LOCK"
+  unset _wcu_tmp _wcu_done _wcu_k _wcu_v
+  return "$_wcu_rc"
+}
+
+# --custom-add <kind> <target> <value> - manage any setting: kind is global,
+# secure, system or prop (persist.* only). The same kind + target again
+# changes the value.
+cmd_custom_add() {
+  if ! valid_custom_target "$1" "$2"; then
+    echo "error=bad-target"
+    echo "rc=1"
+    return 1
+  fi
+  if ! valid_custom_value "$3"; then
+    echo "error=bad-value"
+    echo "rc=1"
+    return 1
+  fi
+  load_config
+  _cca_id=""
+  _cca_max=0
+  _cca_n=0
+  for _cca_k in $CUSTOM_KEYS; do
+    _cca_n=$((_cca_n + 1))
+    _cca_num=${_cca_k#c}
+    [ "$_cca_num" -gt "$_cca_max" ] && _cca_max=$_cca_num
+    key_info "$_cca_k"
+    [ "$KIND" = "$1" ] && [ "$TARGET" = "$2" ] && _cca_id=$_cca_k
+  done
+  _cca_new=0
+  if [ -z "$_cca_id" ]; then
+    if [ "$_cca_n" -ge "$CUSTOM_MAX" ] || [ "$_cca_max" -ge 999 ]; then
+      echo "error=full"
+      echo "rc=1"
+      unset _cca_id _cca_max _cca_n _cca_k _cca_num _cca_new
+      return 1
+    fi
+    _cca_id="c$((_cca_max + 1))"
+    _cca_new=1
+  fi
+  # A new id may have been used by a deleted key: start it clean, so its
+  # snapshot is taken fresh right before the first write.
+  if [ "$_cca_new" -eq 1 ] && lock_acquire "$APPLY_LOCK" 5; then
+    set_touched "$_cca_id" 0
+    drop_original "$_cca_id"
+    lock_release "$APPLY_LOCK"
+  fi
+  if ! write_custom "" "$_cca_id" "$1" "$2" "$3"; then
+    echo "rc=1"
+    unset _cca_id _cca_max _cca_n _cca_k _cca_num _cca_new
+    return 1
+  fi
+  load_config
+  if [ "$_cca_new" -eq 1 ]; then
+    log_info "Custom: added $1/$2=$3"
+  else
+    log_info "Custom: $1/$2 is now $3"
+  fi
+  daemon_is_running && kill -USR1 "$(daemon_pid)" 2>/dev/null
+  APPLIED=0
+  check_keys "$_cca_id"
+  echo "id=$_cca_id"
+  echo "applied=$APPLIED"
+  echo "rc=0"
+  unset _cca_id _cca_max _cca_n _cca_k _cca_num _cca_new
+  return 0
+}
+
+# --custom-peek <kind> <target> - prints the current value, so the WebUI can
+# show it before the key is added. Read only.
+cmd_custom_peek() {
+  case "$2" in
+    '' | .* | *[!A-Za-z0-9_.-]*)
+      echo "error=bad-target"
+      echo "rc=1"
+      return 1 ;;
+  esac
+  case "$1:$2" in
+    global:* | secure:* | system:*) _cp_v=$(settings get "$1" "$2" 2>/dev/null) ;;
+    prop:persist.?*) _cp_v=$(getprop "$2" 2>/dev/null) ;;
+    *)
+      echo "error=bad-target"
+      echo "rc=1"
+      return 1 ;;
+  esac
+  case "$_cp_v" in
+    *'Failure calling'* | *'Exception'* | *'cmd: '*)
+      echo "error=unreadable"
+      echo "rc=1"
+      unset _cp_v
+      return 1 ;;
+  esac
+  printf 'value=%s\n' "$_cp_v"
+  echo "rc=0"
+  unset _cp_v
+}
+
+# --custom-names <kind> - every name of that kind with its current value, for
+# the suggestions in the WebUI: N=<name>|<value>. Read only. Names that the
+# module could not manage are left out.
+cmd_custom_names() {
+  case "$1" in
+    global | secure | system)
+      settings list "$1" 2>/dev/null | while IFS= read -r _cn_l; do
+        _cn_k=${_cn_l%%=*}
+        case "$_cn_k" in '' | .* | *[!A-Za-z0-9_.-]*) continue ;; esac
+        [ "$_cn_k" = "$_cn_l" ] && continue
+        printf 'N=%s|%.40s\n' "$_cn_k" "${_cn_l#*=}"
+      done ;;
+    prop)
+      getprop 2>/dev/null | while IFS= read -r _cn_l; do
+        case "$_cn_l" in '[persist.'*']: ['*) ;; *) continue ;; esac
+        _cn_k=${_cn_l#\[}
+        _cn_k=${_cn_k%%]*}
+        case "$_cn_k" in *[!A-Za-z0-9_.-]*) continue ;; esac
+        _cn_v=${_cn_l#*]: \[}
+        printf 'N=%s|%.40s\n' "$_cn_k" "${_cn_v%]}"
+      done ;;
+    *)
+      echo "error=bad-kind"
+      echo "rc=1"
+      return 1 ;;
+  esac
+  echo "rc=0"
+}
+
+# --custom-del <id> - stop managing a custom key. Like "not managed" for the
+# built-in keys, the setting is left as it is now.
+cmd_custom_del() {
+  load_config
+  case " $CUSTOM_KEYS " in
+    *" $1 "*) ;;
+    *)
+      echo "error=not-found"
+      echo "rc=1"
+      return 1 ;;
+  esac
+  key_info "$1"
+  _ccd_kind=$KIND
+  _ccd_t=$TARGET
+  if ! write_custom "$1" ""; then
+    echo "rc=1"
+    unset _ccd_kind _ccd_t
+    return 1
+  fi
+  if lock_acquire "$APPLY_LOCK" 5; then
+    set_touched "$1" 0
+    drop_original "$1"
+    lock_release "$APPLY_LOCK"
+  fi
+  load_config
+  log_info "Custom: removed $_ccd_kind/$_ccd_t - left as it is"
+  daemon_is_running && kill -USR1 "$(daemon_pid)" 2>/dev/null
+  echo "rc=0"
+  unset _ccd_kind _ccd_t
+  return 0
+}
+
 cmd_config() {
   _cc_ok=0
-  case " $KEYS " in
+  # Custom keys are changed with --custom-add, not here.
+  case " $BASE_KEYS " in
     *" $1 "*)
       valid_value "$1" "$2" && _cc_ok=1 ;;
     *)
@@ -522,9 +1053,18 @@ cmd_config() {
     echo "rc=1"
     return 1
   fi
+  if [ "$1" = adb_enabled ] && [ "$2" = usb ]; then
+    usb_cable
+    if [ "$CABLE" = none ]; then
+      log_warn "adb_enabled=usb: this device does not show the USB cable state - not set"
+      echo "error=no-usb-detect"
+      echo "rc=1"
+      return 1
+    fi
+  fi
   if [ "$1" = mock_location_app ] && [ "$2" != skip ] &&
     [ "$(pkg_state "$2")" = missing ]; then
-    log_warn "mock_location_app: $2 is not installed — not set"
+    log_warn "mock_location_app: $2 is not installed - not set"
     echo "error=not-installed"
     echo "rc=1"
     return 1
@@ -546,6 +1086,15 @@ cmd_config() {
   case " $KEYS " in
     *" $1 "*) check_keys "$1" ;;
   esac
+  # check_keys hands a key set to skip back at once (needs the apply lock);
+  # if the lock was busy, do it here so the next takeover is captured fresh.
+  if [ "$2" = skip ] && is_touched "$1" && lock_acquire "$APPLY_LOCK" 5; then
+    if is_touched "$1"; then
+      set_touched "$1" 0
+      log_info "$1: no longer managed - left as it is"
+    fi
+    lock_release "$APPLY_LOCK"
+  fi
 
   echo "applied=$APPLIED"
   echo "rc=0"
@@ -598,9 +1147,16 @@ cmd_status() {
   load_config
   set_profile_vars "$CFG_profile"
 
+  # Printed straight from the helpers instead of through $(...): every
+  # subshell is a fork, and this runs on every WebUI refresh.
   _drift=0
+  usb_cable
+  _st_cable=$CABLE
+  live_cache_fill
   for _st_k in $KEYS; do
     eval "_st_want=\$CFG_$_st_k"
+    key_want "$_st_k"
+    _st_now=$WANT
     if read_live "$_st_k"; then
       _st_live=$LIVE
       _st_ok=1
@@ -609,14 +1165,23 @@ cmd_status() {
       _st_ok=0
     fi
     printf 'CFG_%s=%s\n' "$_st_k" "$_st_want"
+    printf 'WANT_%s=%s\n' "$_st_k" "$_st_now"
     printf 'LIVE_%s=%s\n' "$_st_k" "$_st_live"
-    printf 'ORIG_%s=%s\n' "$_st_k" "$(read_original "$_st_k")"
-    printf 'KIND_%s=%s\n' "$_st_k" "$(key_kind "$_st_k")"
-    printf 'TARGET_%s=%s\n' "$_st_k" "$(key_target "$_st_k")"
-    printf 'LABEL_%s=%s\n' "$_st_k" "$(key_label "$_st_k")"
+    orig_lookup "$_st_k"
+    printf 'ORIG_%s=%s\n' "$_st_k" "$ORIG"
+    printf 'ORIGHAS_%s=%s\n' "$_st_k" "$ORIG_HAS"
+    printf 'KIND_%s=' "$_st_k"; key_kind "$_st_k"; echo
+    printf 'TARGET_%s=' "$_st_k"; key_target "$_st_k"; echo
+    printf 'LABEL_%s=' "$_st_k"; key_label "$_st_k"; echo
+    printf 'TYPE_%s=' "$_st_k"; key_type "$_st_k"; echo
+    if is_touched "$_st_k"; then
+      printf 'TOUCHED_%s=1\n' "$_st_k"
+    else
+      printf 'TOUCHED_%s=0\n' "$_st_k"
+    fi
     if [ "$_st_want" = skip ]; then
       printf 'MATCH_%s=skip\n' "$_st_k"
-    elif [ "$_st_ok" -eq 1 ] && [ "$_st_live" = "$_st_want" ]; then
+    elif [ "$_st_ok" -eq 1 ] && [ "$_st_live" = "$_st_now" ]; then
       printf 'MATCH_%s=1\n' "$_st_k"
     else
       printf 'MATCH_%s=0\n' "$_st_k"
@@ -624,10 +1189,19 @@ cmd_status() {
     fi
   done
 
-  if daemon_is_running; then
+  _st_pid=$(daemon_pid)
+  if pid_is "$_st_pid" "$DAEMON_NEEDLE"; then
     _dstate="running"
-    _mode=$(read_state MODE)
-    _wpid=$(read_state WATCHER_PID)
+    _mode=""
+    _wpid=0
+    if [ -f "$STATE_FILE" ]; then
+      while IFS= read -r _st_l; do
+        case "$_st_l" in
+          MODE=*) _mode=${_st_l#MODE=} ;;
+          WATCHER_PID=*) _wpid=${_st_l#WATCHER_PID=} ;;
+        esac
+      done <"$STATE_FILE"
+    fi
   else
     _dstate="stopped"
     _mode="none"
@@ -635,15 +1209,18 @@ cmd_status() {
   fi
 
   printf 'KEYS=%s\n' "$KEYS"
-  printf 'VERSION=%s\n' "$(module_version)"
+  printf 'CUSTOM_KEYS=%s\n' "$CUSTOM_KEYS"
+  printf 'CUSTOM_MAX=%s\n' "$CUSTOM_MAX"
+  printf 'USB_CABLE=%s\n' "$_st_cable"
+  printf 'VERSION='; module_version; echo
   printf 'DAEMON=%s\n' "$_dstate"
-  printf 'DAEMON_PID=%s\n' "$(daemon_pid)"
-  printf 'STARTED=%s\n' "$(read_state STARTED)"
+  printf 'DAEMON_PID=%s\n' "$_st_pid"
+  printf 'STARTED='; read_state STARTED; echo
   printf 'MODE=%s\n' "${_mode:-none}"
   printf 'WATCHER_PID=%s\n' "${_wpid:-0}"
   printf 'ENGINE=%s\n' "$CFG_engine"
-  printf 'PAUSED=%s\n' "$(read_state_num PAUSED)"
-  printf 'INOTIFYD=%s\n' "$([ -n "$CMD_INOTIFYD" ] && echo 1 || echo 0)"
+  printf 'PAUSED='; read_state_num PAUSED; echo
+  if [ -n "$CMD_INOTIFYD" ]; then echo 'INOTIFYD=1'; else echo 'INOTIFYD=0'; fi
   printf 'PROFILE=%s\n' "$CFG_profile"
   printf 'CD_FAST=%s\n' "$CD_FAST"
   printf 'CD_SECURE=%s\n' "$CD_SECURE"
@@ -656,19 +1233,19 @@ cmd_status() {
     printf 'POLL_BASE=%s\nPOLL_MAX=%s\n' "$CD_SECURE" "$FULL"
   fi
   printf 'MTIME_GATE=1\n'
-  printf 'APPLIES=%s\n' "$(read_state_num APPLIES)"
-  printf 'LAST_APPLY=%s\n' "$(read_state LAST_APPLY)"
+  printf 'APPLIES='; read_state_num APPLIES; echo
+  printf 'LAST_APPLY='; read_state LAST_APPLY; echo
   printf 'DRIFT=%s\n' "$_drift"
-  printf 'HAS_ORIGINAL=%s\n' "$([ -f "$ORIGINAL_FILE" ] && echo 1 || echo 0)"
+  if [ -f "$ORIGINAL_FILE" ]; then echo 'HAS_ORIGINAL=1'; else echo 'HAS_ORIGINAL=0'; fi
   printf 'LOG_LEVEL=%s\n' "$CFG_log_level"
-  printf 'LOG_SIZE=%s\n' "$(file_size "$LOG_FILE")"
+  printf 'LOG_SIZE='; file_size "$LOG_FILE"; echo
   printf 'BUSYBOX=%s\n' "${BUSYBOX:-none}"
-  printf 'NOW=%s\n' "$(date +%s)"
+  printf 'NOW='; date +%s
   printf 'rc=0\n'
-  unset _st_k _st_want _st_live _st_ok _drift _dstate _mode _wpid
+  unset _st_k _st_want _st_now _st_cable _st_live _st_ok _st_pid _st_l _drift _dstate _mode _wpid
 }
 
-# cmd_mock_apps — the WebUI picker. Answers at once from the cache; when the
+# cmd_mock_apps - the WebUI picker. Answers at once from the cache; when the
 # installed apps have changed, a scan is started in the background and
 # SCAN=running tells the WebUI to ask again shortly. The configured package
 # is reported separately (CONFIG=), never as an APP= line.
@@ -730,7 +1307,7 @@ cmd_b64cmd() {
 # ── Boot flow ─────────────────────────────────────────────────────────────────
 boot_flow() {
   if daemon_is_running; then
-    log_warn "service.sh started while the daemon is running (pid $(daemon_pid)) — ignored"
+    log_warn "service.sh started while the daemon is running (pid $(daemon_pid)) - ignored"
     return 0
   fi
   # Anything in run/ is from the previous boot.
@@ -743,12 +1320,13 @@ boot_flow() {
   migrate_legacy_config
   ensure_config
   load_config
+  ensure_touched
   log_rotate
 
   if ! command -v settings >/dev/null 2>&1; then
-    log_error "The 'settings' command is unavailable — nothing can be enforced"
+    log_error "The 'settings' command is unavailable - nothing can be enforced"
   elif ! wait_for_settings 90; then
-    log_warn "Settings service still not answering after boot — continuing"
+    log_warn "Settings service still not answering after boot - continuing"
   fi
 
   log_sep "Boot $(module_version) (profile $CFG_profile, engine $CFG_engine)"
@@ -763,9 +1341,21 @@ case "$1" in
   --clear-log) cmd_clear_log ;;
   --b64cmd) cmd_b64cmd ;;
   --mock-apps) cmd_mock_apps ;;
-  --mock-scan) mock_scan ;;
+  --mock-scan)
+    # Out of the manager app's cgroup, so a frozen app cannot stall it.
+    daemon_detach
+    mock_scan
+    ;;
   --apply) cmd_apply ;;
   --restore) cmd_restore ;;
+  --snapshot) cmd_snapshot ;;
+  --export) cmd_export ;;
+  --backups) cmd_backups ;;
+  --import) cmd_import "$2" ;;
+  --custom-add) cmd_custom_add "$2" "$3" "$4" ;;
+  --custom-del) cmd_custom_del "$2" ;;
+  --custom-peek) cmd_custom_peek "$2" "$3" ;;
+  --custom-names) cmd_custom_names "$2" ;;
   --config) cmd_config "$2" "$3" ;;
   --daemon) daemon_main ;;
   --daemon-start) cmd_daemon_start ;;

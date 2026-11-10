@@ -17,7 +17,7 @@
     *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
     body{
       background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;
-      /* The system bars stay visible — we never go immersive. */
+      /* The system bars stay visible - we never go immersive. */
       padding-bottom:calc(env(safe-area-inset-bottom,0px) + 32px);
       padding-left:env(safe-area-inset-left,0px);
       padding-right:env(safe-area-inset-right,0px);
@@ -49,6 +49,11 @@
     .chip{font-size:9px;font-family:var(--mono);padding:3px 8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border2);color:var(--text-dim);}
     .chip b{color:var(--cyan);}
 
+    .tabs{display:flex;gap:2px;margin:12px 14px 0;border-bottom:1px solid var(--border);}
+    .tab{flex:1;min-width:0;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.03em;padding:9px 0 8px;cursor:pointer;}
+    .tab.active{color:var(--amber);border-bottom-color:var(--amber);}
+    .tab-page{display:none;}
+    .tab-page.active{display:block;}
     .section-title{font-size:9px;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-dim);font-family:var(--mono);padding:18px 16px 8px;}
     .section-title::before{content:'// ';color:var(--amber);opacity:0.5;}
 
@@ -63,6 +68,15 @@
     .card-val{display:inline-block;font-size:10px;font-family:var(--mono);padding:1px 6px;border-radius:3px;margin-top:4px;font-weight:700;}
     .card-val.on{background:rgba(126,203,53,0.12);color:var(--green);border:1px solid rgba(126,203,53,0.25);}
     .card-val.off{background:rgba(224,92,92,0.1);color:var(--red);border:1px solid rgba(224,92,92,0.2);}
+    .card-release{margin-left:8px;font-size:10px;font-family:var(--mono);background:none;border:none;color:var(--text-dim);text-decoration:underline;padding:0;cursor:pointer;}
+    .card-desc{margin-top:6px;font-size:10px;font-family:var(--mono);color:var(--text-dim);line-height:1.5;}
+    .card.has-sub{flex-wrap:wrap;}
+    .card-sub{flex-basis:100%;display:flex;align-items:center;gap:14px;padding-top:12px;border-top:1px solid var(--border);}
+    .card-sub-text{flex:1;min-width:0;font-size:13px;color:var(--text-hi);}
+    .card-sub-text .card-key{margin-top:3px;}
+    .card-sub.disabled .card-sub-text{color:var(--text-dim);}
+    .card-sub.disabled .toggle{opacity:0.35;}
+    .card-sub.disabled .slider{cursor:not-allowed;}
     .card-val.neutral{background:rgba(245,166,35,0.1);color:var(--amber);border:1px solid rgba(245,166,35,0.2);}
 
     .toggle-wrap{flex-shrink:0;}
@@ -76,6 +90,9 @@
     .toggle.inverted input:checked+.slider::before{background:var(--red);box-shadow:0 0 8px var(--red-dim);}
     .toggle.inverted input:not(:checked)+.slider{background:rgba(126,203,53,0.15);border-color:rgba(126,203,53,0.4);}
     .toggle.inverted input:not(:checked)+.slider::before{background:var(--green);box-shadow:0 0 8px var(--green-dim);}
+    .toggle.blue input:checked+.slider{background:rgba(78,160,255,0.15);border-color:rgba(78,160,255,0.45);}
+    .toggle.blue input:checked+.slider::before{background:#4ea0ff;box-shadow:0 0 8px rgba(78,160,255,0.3);}
+    .card.loading .card-sub{pointer-events:none;}
     .spinner{width:18px;height:18px;border:2px solid var(--border2);border-top-color:var(--amber);border-radius:50%;animation:spin .6s linear infinite;display:none;flex-shrink:0;}
     @keyframes spin{to{transform:rotate(360deg);}}
     .card.loading .spinner{display:block;}
@@ -116,7 +133,7 @@
     .fbtn.error.active{background:var(--red-dim);border-color:rgba(224,92,92,0.35);color:var(--red);}
     .fbtn.debug.active{background:rgba(184,184,154,0.08);border-color:var(--border2);color:var(--text);}
     .log-size{font-size:9px;font-family:var(--mono);color:var(--text-dim);margin-left:auto;}
-    .log-body{font-family:var(--mono);font-size:10px;line-height:1.7;padding:9px 12px;height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
+    .log-body{font-family:var(--mono);font-size:10px;line-height:1.7;padding:9px 12px;height:220px;min-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;}
     .log-line{display:block;white-space:pre-wrap;word-break:break-all;}
     .log-line.INFO{color:var(--text);}
     .log-line.WARN{color:var(--amber);}
@@ -135,6 +152,44 @@
     .fatal{margin:40px 14px;padding:18px;background:var(--red-dim);border:1px solid rgba(224,92,92,0.35);border-radius:10px;color:var(--red);font-family:var(--mono);font-size:11px;line-height:1.7;}
     #sel-mock{max-width:48%;text-overflow:ellipsis;}
     .pill{white-space:nowrap;}
+    td.orig{color:var(--purple);}
+    td.orig.none{color:var(--text-dim);}
+    .snap-row{margin-top:8px;}
+    .snap-info{flex:0 0 calc((100% - 16px) * 2 / 3 + 8px);box-sizing:border-box;min-width:0;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;font-size:10px;font-family:var(--mono);color:var(--text-dim);line-height:1.5;}
+    .snap-info b{color:var(--purple);font-weight:600;}
+    .sec-count{color:var(--text-dim);}
+    .cform{margin:0 14px;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;gap:8px;}
+    .cform-row{display:flex;gap:8px;align-items:center;}
+    .cin{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border2);border-radius:6px;color:var(--text-hi);font-family:var(--mono);font-size:12px;padding:8px;}
+    .cin:focus{outline:none;border-color:var(--amber);}
+    .cbtn{flex-shrink:0;background:none;border:1px solid rgba(126,203,53,0.4);color:var(--green);border-radius:8px;padding:8px 14px;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;}
+    .cbtn:active{opacity:0.5;}
+    .cbtn:disabled{opacity:0.3;pointer-events:none;}
+    .cform-hint{font-size:10px;font-family:var(--mono);color:var(--text-dim);line-height:1.5;}
+    .cform-hint b{color:var(--text);font-weight:600;}
+    .card-actions{flex-shrink:0;display:flex;flex-direction:column;gap:6px;}
+    .cact{background:none;border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.05em;cursor:pointer;white-space:nowrap;}
+    .cact.del{border-color:rgba(224,92,92,0.35);color:var(--red);}
+    .cact:active{opacity:0.5;}
+    .card.loading .card-actions{display:none;}
+    .csug-wrap{position:relative;flex:1;min-width:0;display:flex;}
+    .csug{display:none;position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:20;max-height:260px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.5);}
+    .csug.show{display:block;}
+    .csug-item{padding:8px 10px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-hi);overflow-wrap:anywhere;cursor:pointer;}
+    .csug-item:last-child{border-bottom:none;}
+    .csug-item span{display:block;font-size:9px;color:var(--text-dim);margin-top:2px;}
+    .csug-item:active{background:var(--surface);}
+    .csug-note{padding:7px 10px;font-family:var(--mono);font-size:9px;color:var(--text-dim);}
+    .custom-empty{padding:14px;text-align:center;font-size:10px;font-family:var(--mono);color:var(--text-dim);background:var(--surface);border:1px solid var(--border);border-radius:10px;}
+    .backup-list{margin:8px 14px 0;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+    .backup-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);}
+    .backup-item:last-child{border-bottom:none;}
+    .backup-name{flex:1;min-width:0;font-size:11px;font-family:var(--mono);color:var(--text-hi);overflow-wrap:anywhere;}
+    .backup-name span{display:block;font-size:9px;color:var(--text-dim);margin-top:2px;}
+    .backup-btn{flex-shrink:0;background:none;border:1px solid rgba(245,166,35,0.35);color:var(--amber);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:0.06em;cursor:pointer;}
+    .backup-btn:active{opacity:0.5;}
+    .backup-btn:disabled{opacity:0.3;pointer-events:none;}
+    .backup-empty{padding:12px;text-align:center;font-size:10px;font-family:var(--mono);color:var(--text-dim);}
     td.pkg{max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   </style>
 </head>
@@ -168,19 +223,28 @@
     <div class="daemon-dot" id="daemonDot"></div>
     <div>
       <div class="daemon-status" id="daemonStatus">checking…</div>
-      <div class="daemon-meta" id="daemonMeta">—</div>
+      <div class="daemon-meta" id="daemonMeta">-</div>
     </div>
   </div>
   <button class="refresh-btn" onclick="refreshAll()">↻ refresh</button>
 </div>
 
 <div class="chips">
-  <div class="chip">profile <b id="chipProfile">—</b></div>
-  <div class="chip">reaction <b id="chipPoll">—</b></div>
-  <div class="chip">corrections <b id="chipApplies">—</b></div>
-  <div class="chip">drift <b id="chipDrift">—</b></div>
+  <div class="chip">profile <b id="chipProfile">-</b></div>
+  <div class="chip">reaction <b id="chipPoll">-</b></div>
+  <div class="chip">corrections <b id="chipApplies">-</b></div>
+  <div class="chip">drift <b id="chipDrift">-</b></div>
 </div>
 
+<div class="tabs" id="tabs">
+  <button class="tab active" id="tabbtn-main" onclick="showTab('main')">Settings</button>
+  <button class="tab" id="tabbtn-tweaks" onclick="showTab('tweaks')">Tweaks</button>
+  <button class="tab" id="tabbtn-custom" onclick="showTab('custom')">Custom</button>
+  <button class="tab" id="tabbtn-runtime" onclick="showTab('runtime')">Runtime</button>
+  <button class="tab" id="tabbtn-log" onclick="showTab('log')">Log</button>
+</div>
+
+<div class="tab-page active" id="tab-main">
 <div class="section-title">settings</div>
 <div class="cards" id="cards"></div>
 <div class="cards" style="margin-top:10px;">
@@ -193,7 +257,7 @@
     <div class="card-body">
       <div class="card-name">Mock Location App</div>
       <div class="card-key">appop / android:mock_location</div>
-      <span class="card-val neutral" id="mockVal">—</span>
+      <span class="card-val neutral" id="mockVal">-</span>
     </div>
     <div class="spinner"></div>
     <select class="sel" id="sel-mock" onchange="setMock()">
@@ -201,15 +265,60 @@
     </select>
   </div>
 </div>
+</div>
 
+<div class="tab-page" id="tab-tweaks">
+<div class="section-title">developer options tweaks</div>
+<div class="cards" id="cards-tweaks"></div>
+<div class="note" style="margin-top:12px;">
+  Each one is <b>not managed</b> until you pick a value.
+</div>
+</div>
+
+<div class="tab-page" id="tab-custom">
+<div class="section-title">add a setting <span id="customCount" class="sec-count"></span></div>
+<div class="cform">
+  <div class="cform-row">
+    <select class="sel" id="cKind" onchange="NAMES[this.value] || loadNames(this.value); peekCustom()">
+      <option value="global">global</option>
+      <option value="secure">secure</option>
+      <option value="system">system</option>
+      <option value="prop">prop</option>
+    </select>
+    <div class="csug-wrap">
+      <input class="cin" id="cTarget" placeholder="name, e.g. screen_off_timeout" autocapitalize="off" autocomplete="off" spellcheck="false"
+        oninput="suggestCustom()" onfocus="suggestCustom()" onblur="hideSuggest()" onchange="peekCustom()">
+      <div class="csug" id="cSug"></div>
+    </div>
+  </div>
+  <div class="cform-row">
+    <input class="cin" id="cValue" placeholder="value to keep" autocapitalize="off" autocomplete="off" spellcheck="false" oninput="unitHint()">
+    <select class="sel" id="cUnit" style="display:none" onchange="unitHint()">
+      <option value="min">min</option>
+      <option value="s">sec</option>
+      <option value="ms">ms</option>
+    </select>
+    <button class="cbtn" id="cAdd" onclick="addCustom()">Add</button>
+  </div>
+  <div class="cform-hint" id="cPeek">Type a name to see its current value.</div>
+  <div class="cform-hint">The module keeps the value: if Android or the ROM changes it, it is set back.
+    Props must start with <b>persist.</b> Values: letters, digits and <b>. _ , : + -</b>.
+    The same name again changes its value. Names ending in <b>timeout</b> are in milliseconds;
+    pick <b>min</b> or <b>sec</b> and type the number.</div>
+</div>
+<div class="section-title">your settings</div>
+<div class="cards" id="cards-custom"></div>
+</div>
+
+<div class="tab-page" id="tab-runtime">
 <div class="section-title">runtime</div>
 <div class="table-wrap">
   <table>
     <thead>
-      <tr><th>setting</th><th>config</th><th>live</th><th>state</th></tr>
+      <tr><th>setting</th><th>config</th><th>live</th><th>original</th><th>state</th></tr>
     </thead>
     <tbody id="runtimeBody">
-      <tr><td colspan="4" style="color:var(--text-dim);text-align:center;">loading…</td></tr>
+      <tr><td colspan="5" style="color:var(--text-dim);text-align:center;">loading…</td></tr>
     </tbody>
   </table>
 </div>
@@ -229,6 +338,29 @@
     Restore<br>Original
   </button>
 </div>
+<div class="actions snap-row">
+  <div class="snap-info">
+    <b>original</b> = what Restore Original and uninstall put back. Only settings the module has
+    changed have one. <b>New snapshot</b> makes the current values the originals.
+  </div>
+  <button class="action-btn purple" id="btn-snapshot" onclick="doAction('snapshot')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+    New<br>Snapshot
+  </button>
+</div>
+
+<div class="section-title">backup</div>
+<div class="actions">
+  <div class="snap-info">
+    <b>Export</b> saves the settings of this page to <b id="backupDir">/sdcard/dop</b>.
+    Tap a file below to load it back, for example after a new ROM.
+  </div>
+  <button class="action-btn amber" id="btn-export" onclick="doExport()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Export<br>Config
+  </button>
+</div>
+<div class="backup-list" id="backupList"><div class="backup-empty">loading…</div></div>
 
 <div class="section-title">tuning</div>
 <div class="cards">
@@ -287,7 +419,16 @@
     </select>
   </div>
 </div>
+<div class="section-title">notes</div>
+<div class="note">
+  Configuration lives in <b>/data/adb/dev-options-persist/config</b> and survives module updates.
+  <b>Restore Original</b> puts back the settings the module changed, with the value each had right
+  before the module first changed it, and pauses enforcement until <b>Apply Now</b> or the next
+  reboot. Uninstalling restores them automatically and leaves Developer Options visible if the module hid them.
+</div>
+</div>
 
+<div class="tab-page" id="tab-log">
 <div class="section-title">service log</div>
 <div class="log-wrap">
   <div class="log-bar">
@@ -297,17 +438,11 @@
     <button class="fbtn debug"        id="f-debug" onclick="toggleFilter('DEBUG')">DBG</button>
     <button class="fbtn" onclick="loadLogs()">↻</button>
     <button class="fbtn error" onclick="clearLog()">clear</button>
-    <span class="log-size" id="logSize">— B</span>
+    <span class="log-size" id="logSize">- B</span>
   </div>
   <div class="log-body" id="logBody"><span class="log-empty">loading…</span></div>
 </div>
 
-<div class="section-title">notes</div>
-<div class="note">
-  Configuration lives in <b>/data/adb/dev-options-persist/config</b> and survives module updates.
-  <b>Restore Original</b> puts back the values captured at install time and pauses enforcement until
-  <b>Apply Now</b> or the next reboot. Uninstalling restores them automatically and always leaves
-  Developer Options visible.
 </div>
 
 <div class="footer" id="footer">dev-options-persist</div>
@@ -432,6 +567,12 @@ function parseKV(text) {
   return out;
 }
 
+// Single-quotes a value for the root shell. Every value sent today is
+// already checked by service.sh; this keeps it safe if that ever changes.
+function shq(s) {
+  return "'" + String(s == null ? '' : s).replace(/'/g, "'\\''") + "'";
+}
+
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -452,7 +593,7 @@ function fatal(msg) {
   document.body.innerHTML =
     '<div class="fatal"><b>Dev Options Persist</b><br><br>' + esc(msg) +
     '<br><br>This WebUI needs a root manager that provides the ksu JavaScript ' +
-    'bridge — KernelSU, SukiSU, APatch or MMRL.</div>';
+    'bridge - KernelSU, SukiSU, APatch or MMRL.</div>';
 }
 
 var DEVICE_NOW = 0;
@@ -490,16 +631,97 @@ var ICONS = {
   development_settings_enabled: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
   extended_power_menu: '<path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>',
   adbinstall: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
-  adbinput: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+  adbinput: '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  window_animation_scale: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
+  transition_animation_scale: '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>',
+  animator_duration_scale: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
+  stay_on_while_plugged_in: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  verifier_verify_adb_installs: '<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/>',
+  phantom_process_killer: '<path d="M6 20V10a6 6 0 0 1 12 0v10l-3-2-3 2-3-2z"/><circle cx="10" cy="10" r="1"/><circle cx="14" cy="10" r="1"/>'
 };
+var TWEAKS = ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale',
+  'stay_on_while_plugged_in', 'verifier_verify_adb_installs', 'phantom_process_killer'];
+var ANIM_VALUES = ['0', '0.5', '1', '1.5', '2', '5', '10'];
+// One plain line under each Tweaks card, so nobody needs the help page.
+var ANIM_DESC = 'How fast animations play. 0.5x feels faster, off turns them off.';
+var DESC = {
+  adb_enabled: 'Lets a computer control the phone over adb.',
+  development_settings_enabled: 'Red hides the Developer Options menu in Settings. The settings inside keep working.',
+  extended_power_menu: 'The Extended power menu switch from Developer Options (Xiaomi).',
+  adbinstall: 'Lets you install apps over USB (Xiaomi).',
+  adbinput: 'Lets adb grant permissions and simulate taps (Xiaomi).',
+  window_animation_scale: ANIM_DESC,
+  transition_animation_scale: ANIM_DESC,
+  animator_duration_scale: ANIM_DESC,
+  stay_on_while_plugged_in: 'The screen stays on while the phone is charging.',
+  verifier_verify_adb_installs: 'Checks apps installed over adb. Off makes adb installs faster.',
+  phantom_process_killer: 'Off stops Android from killing background processes of Termux and similar apps.'
+};
+function descLine(k) {
+  return DESC[k] ? '<div class="card-desc">' + esc(DESC[k]) + '</div>' : '';
+}
+
+function showTab(name) {
+  ['main', 'tweaks', 'custom', 'runtime', 'log'].forEach(function (t) {
+    document.getElementById('tab-' + t).classList.toggle('active', t === name);
+    document.getElementById('tabbtn-' + t).classList.toggle('active', t === name);
+  });
+  try { localStorage.setItem('dop-tab', name); } catch (e) {}
+  if (name === 'log') fitLog();
+}
+
+// The Log tab has the log only, so the log box fills the rest of the screen.
+function fitLog() {
+  var body = document.getElementById('logBody');
+  if (!body || !document.getElementById('tab-log').classList.contains('active')) return;
+  var top = body.getBoundingClientRect().top + window.scrollY;
+  var h = Math.max(220, Math.floor(window.innerHeight - top - 16));
+  body.style.height = h + 'px';
+}
+window.addEventListener('resize', fitLog);
+
+// Animation scales are a choice, not a switch.
+function animCard(k, st) {
+  var cfg = st['CFG_' + k] || 'skip';
+  var live = st['LIVE_' + k] || '';
+  var skipped = (cfg === 'skip');
+  var match = (st['MATCH_' + k] === '1');
+  var shown = live === 'unreadable' ? 'N/A' : (live === 'null' || live === '' ? 'default' : live + 'x');
+  var valCls = skipped ? 'neutral' : (match ? 'on' : 'neutral');
+  var opts = '<option value="skip"' + (skipped ? ' selected' : '') + '>not managed</option>';
+  ANIM_VALUES.forEach(function (v) {
+    opts += '<option value="' + v + '"' + (cfg === v ? ' selected' : '') + '>' +
+      (v === '0' ? 'off' : v + 'x') + '</option>';
+  });
+  return '<div class="card" id="card-' + esc(k) + '">' +
+      '<div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8">' +
+        (ICONS[k] || '') + '</svg></div>' +
+      '<div class="card-body">' +
+        '<div class="card-name">' + esc(st['LABEL_' + k] || k) + '</div>' +
+        '<div class="card-key">' + esc(st['KIND_' + k] || '') + ' / ' + esc(st['TARGET_' + k] || k) + '</div>' +
+        '<span class="card-val ' + valCls + '">' + (skipped ? 'UNMANAGED · ' : '') + esc(shown) + '</span>' +
+        descLine(k) +
+      '</div>' +
+      '<div class="spinner"></div>' +
+      '<select class="sel" id="sel-' + esc(k) + '" onchange="setKey(\'' + esc(k) + '\', this.value, \'Updated\')">' +
+        opts + '</select>' +
+    '</div>';
+}
 
 var STATUS = {};
 var KEYS = [];
 
 function renderCards(st) {
   var html = '';
+  var tweaks = '';
   KEYS.forEach(function (k) {
     if (k === 'mock_location_app') return; // has its own card
+    if (st['TYPE_' + k] === 'raw') return; // custom key: Custom tab
+    var isTweak = TWEAKS.indexOf(k) >= 0;
+    if (st['TYPE_' + k] === 'anim') {
+      tweaks += animCard(k, st);
+      return;
+    }
     var cfg = st['CFG_' + k] || '';
     var live = st['LIVE_' + k] || '';
     var label = st['LABEL_' + k] || k;
@@ -507,6 +729,8 @@ function renderCards(st) {
     var target = st['TARGET_' + k] || k;
     var inverted = (k === 'development_settings_enabled');
     var skipped = (cfg === 'skip' || cfg === '');
+    // adb_enabled=usb: on only while a computer is connected.
+    var usbMode = (k === 'adb_enabled' && cfg === 'usb');
 
     // The switch shows what the config asks for; the badge shows what the
     // system reports right now, so a paused or drifting value is visible.
@@ -516,6 +740,11 @@ function renderCards(st) {
       checked = false;
       valText = 'UNMANAGED · ' + live;
       valCls = 'neutral';
+    } else if (usbMode) {
+      checked = true;
+      valText = (live === 'unreadable' ? 'N/A' : (live === '1' ? 'ON' : 'OFF')) + ' · ' +
+        (st.USB_CABLE === '1' ? 'computer connected' : 'no computer');
+      valCls = match ? (live === '1' ? 'on' : 'off') : 'neutral';
     } else if (inverted) {
       checked = cfg === '0';
       valText = (live === 'unreadable' ? 'N/A' : (live === '0' ? 'HIDDEN' : 'VISIBLE')) + ' · ' + live;
@@ -523,18 +752,20 @@ function renderCards(st) {
     } else {
       checked = cfg === '1';
       valText = (live === 'unreadable' ? 'N/A'
-        : (live === '1' ? 'ON' : (live === '0' ? 'OFF' : 'UNSET'))) + ' · ' + (live === '' ? '—' : live);
+        : (live === '1' ? 'ON' : (live === '0' ? 'OFF' : 'UNSET'))) + ' · ' + (live === '' ? '-' : live);
       valCls = match ? (checked ? 'on' : 'off') : 'neutral';
     }
 
-    html +=
-      '<div class="card" id="card-' + esc(k) + '">' +
+    var card =
+      '<div class="card' + (k === 'adb_enabled' ? ' has-sub' : '') + '" id="card-' + esc(k) + '">' +
         '<div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="1.8">' +
           (ICONS[k] || '') + '</svg></div>' +
         '<div class="card-body">' +
           '<div class="card-name">' + esc(label) + '</div>' +
           '<div class="card-key">' + esc(kind) + ' / ' + esc(target) + '</div>' +
           '<span class="card-val ' + valCls + '">' + esc(valText) + '</span>' +
+          (skipped ? '' : '<button class="card-release" onclick="releaseKey(\'' + esc(k) + '\')">not managed</button>') +
+          descLine(k) +
         '</div>' +
         '<div class="spinner"></div>' +
         '<div class="toggle-wrap">' +
@@ -544,9 +775,262 @@ function renderCards(st) {
             '<span class="slider"></span>' +
           '</label>' +
         '</div>' +
+        usbSwitch(k, cfg, st) +
       '</div>';
+    if (isTweak) tweaks += card; else html += card;
   });
   document.getElementById('cards').innerHTML = html;
+  document.getElementById('cards-tweaks').innerHTML = tweaks;
+}
+
+// USB Debugging can follow the cable: on while a computer is connected, off
+// when unplugged or on a charger. Second (blue) switch under the main one;
+// usable only while the main switch is on and the cable can be seen.
+function usbSwitch(k, cfg, st) {
+  if (k !== 'adb_enabled') return '';
+  var usb = (cfg === 'usb');
+  var detect = (st.USB_CABLE === '1' || st.USB_CABLE === '0');
+  var hint = '';
+  if (cfg === 'skip' || cfg === '') hint = 'Manage USB Debugging first';
+  else if (cfg === '0') hint = 'Turn USB Debugging on first';
+  else if (!detect) hint = usb ? 'This device does not show the USB cable state' : 'Not available: this device does not show the USB cable state';
+  // Leaving usb mode must stay possible even if detection vanished.
+  var disabled = (cfg === 'skip' || cfg === '' || cfg === '0' || (!detect && !usb));
+  return '<div class="card-sub' + (disabled ? ' disabled' : '') + '">' +
+      '<div class="card-sub-text">Only while a computer is connected' +
+        '<div class="card-desc">Off when unplugged, so banking and game apps that check for USB debugging do not see it.</div>' +
+        (hint ? '<div class="card-key">' + esc(hint) + '</div>' : '') +
+      '</div>' +
+      '<label class="toggle blue">' +
+        '<input type="checkbox" id="tog-usb"' + (usb ? ' checked' : '') + (disabled ? ' disabled' : '') +
+          ' onchange="setKey(\'adb_enabled\', this.checked ? \'usb\' : \'1\', this.checked ? \'On only while a computer is connected\' : \'Always on\')">' +
+        '<span class="slider"></span>' +
+      '</label>' +
+    '</div>';
+}
+
+// ── Custom keys ──────────────────────────────────────────────────────────────
+function customKeys(st) {
+  return (st.CUSTOM_KEYS || '').split(' ').filter(function (k) { return /^c[0-9]+$/.test(k); });
+}
+
+function renderCustom(st) {
+  var ks = customKeys(st);
+  document.getElementById('customCount').textContent = '· ' + ks.length + ' / ' + (st.CUSTOM_MAX || '32');
+  var html = '';
+  ks.forEach(function (k) {
+    var kind = st['KIND_' + k] || '';
+    var target = st['TARGET_' + k] || '';
+    var want = st['CFG_' + k] || '';
+    var live = st['LIVE_' + k] || '';
+    var match = st['MATCH_' + k] === '1';
+    var liveShown = live === 'unreadable' ? 'N/A' : (live === '' ? 'unset' : (live === 'null' ? 'none' : live));
+    html += '<div class="card" id="card-' + esc(k) + '">' +
+        '<div class="card-body">' +
+          '<div class="card-name" style="overflow-wrap:anywhere">' + esc(target) + '</div>' +
+          '<div class="card-key">' + esc(kind) + ' · keeps ' + esc(niceValue(target, want)) + '</div>' +
+          '<span class="card-val ' + (match ? 'on' : 'neutral') + '">' +
+            (match ? 'OK · ' : 'NOW · ') + esc(niceValue(target, liveShown)) + '</span>' +
+        '</div>' +
+        '<div class="spinner"></div>' +
+        '<div class="card-actions">' +
+          '<button class="cact" onclick="editCustom(\'' + esc(k) + '\')">change</button>' +
+          '<button class="cact del" onclick="delCustom(\'' + esc(k) + '\')">remove</button>' +
+        '</div>' +
+      '</div>';
+  });
+  document.getElementById('cards-custom').innerHTML = html ||
+    '<div class="custom-empty">No custom settings yet. Add one above.</div>';
+}
+
+// Android stores timeouts in milliseconds; nobody remembers 120000.
+function isTimeout(name) { return /timeout/i.test(name || ''); }
+function fmtMs(v) {
+  if (!/^[0-9]+$/.test(v)) return v;
+  var n = parseInt(v, 10);
+  if (n >= 2147483647) return 'never';
+  if (n >= 60000 && n % 60000 === 0) return (n / 60000) + ' min';
+  if (n >= 1000 && n % 1000 === 0) return (n / 1000) + ' sec';
+  if (n >= 1000) return (n / 1000) + ' sec';
+  return n + ' ms';
+}
+function niceValue(name, v) {
+  if (!isTimeout(name) || !/^[0-9]+$/.test(v || '')) return v;
+  return fmtMs(v) + ' (' + v + ')';
+}
+// The value to store: with a unit picked, "2" min -> "120000".
+function customValue() {
+  var raw = document.getElementById('cValue').value.trim();
+  var unitSel = document.getElementById('cUnit');
+  if (unitSel.style.display === 'none' || !/^[0-9]+([.][0-9]+)?$/.test(raw)) return raw;
+  var mul = { min: 60000, s: 1000, ms: 1 }[unitSel.value] || 1;
+  return String(Math.round(parseFloat(raw) * mul));
+}
+function unitShow() {
+  var t = isTimeout(document.getElementById('cTarget').value);
+  document.getElementById('cUnit').style.display = t ? '' : 'none';
+}
+function unitHint() {
+  unitShow();
+  var box = document.getElementById('cPeek');
+  var u = document.getElementById('cUnit');
+  if (u.style.display === 'none' || !document.getElementById('cValue').value.trim()) return;
+  var v = customValue();
+  if (/^[0-9]+$/.test(v)) box.dataset.unit = v;
+  var base = box.dataset.now || '';
+  box.textContent = (base ? base + ' · ' : '') + 'will keep ' + fmtMs(v) + ' (' + v + ')';
+}
+
+// Name suggestions: every name of the chosen kind, read once per kind.
+var NAMES = {};
+var _namesLoading = {};
+async function loadNames(kind) {
+  if (NAMES[kind] || _namesLoading[kind]) return;
+  _namesLoading[kind] = true;
+  try {
+    var list = [];
+    (await svc('--custom-names ' + shq(kind), 30000)).split('\n').forEach(function (l) {
+      if (l.indexOf('N=') !== 0) return;
+      var i = l.indexOf('|');
+      var n = i > 0 ? l.slice(2, i) : l.slice(2);
+      if (/^[A-Za-z0-9_.-]+$/.test(n)) list.push([n, i > 0 ? l.slice(i + 1) : '']);
+    });
+    list.sort(function (a, b) { return a[0] < b[0] ? -1 : 1; });
+    NAMES[kind] = list;
+  } catch (e) {}
+  _namesLoading[kind] = false;
+}
+
+async function suggestCustom() {
+  var kind = document.getElementById('cKind').value;
+  var box = document.getElementById('cSug');
+  unitShow();
+  if (!NAMES[kind]) {
+    box.innerHTML = '<div class="csug-note">reading ' + esc(kind) + ' names…</div>';
+    box.classList.add('show');
+    await loadNames(kind);
+  }
+  var q = document.getElementById('cTarget').value.trim().toLowerCase();
+  var all = NAMES[kind] || [];
+  var hits = q ? all.filter(function (x) { return x[0].toLowerCase().indexOf(q) >= 0; }) : all;
+  // Names that start with what was typed come first.
+  if (q) hits.sort(function (a, b) {
+    var sa = a[0].toLowerCase().indexOf(q) === 0 ? 0 : 1;
+    var sb = b[0].toLowerCase().indexOf(q) === 0 ? 0 : 1;
+    return sa - sb || (a[0] < b[0] ? -1 : 1);
+  });
+  if (document.activeElement !== document.getElementById('cTarget')) return;
+  if (!hits.length) { box.classList.remove('show'); return; }
+  var html = '';
+  hits.slice(0, 40).forEach(function (x) {
+    html += '<div class="csug-item" onmousedown="pickName(event, \'' + esc(x[0]) + '\')">' + esc(x[0]) +
+      '<span>' + esc(niceValue(x[0], x[1]) || '(empty)') + '</span></div>';
+  });
+  if (hits.length > 40) html += '<div class="csug-note">' + (hits.length - 40) + ' more - keep typing</div>';
+  box.innerHTML = html;
+  box.classList.add('show');
+}
+
+function pickName(ev, name) {
+  ev.preventDefault();
+  document.getElementById('cTarget').value = name;
+  document.getElementById('cSug').classList.remove('show');
+  peekCustom();
+  document.getElementById('cValue').focus();
+}
+
+function hideSuggest() {
+  setTimeout(function () { document.getElementById('cSug').classList.remove('show'); }, 150);
+}
+
+var _peekSeq = 0;
+async function peekCustom() {
+  var kind = document.getElementById('cKind').value;
+  var target = document.getElementById('cTarget').value.trim();
+  var box = document.getElementById('cPeek');
+  box.dataset.now = '';
+  unitShow();
+  if (!target) { box.textContent = 'Type a name to see its current value.'; return; }
+  if (!/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(target)) { box.textContent = 'Names use letters, digits and _ . - only.'; return; }
+  var seq = ++_peekSeq;
+  try {
+    var out = parseKV(await svc('--custom-peek ' + shq(kind) + ' ' + shq(target), 15000));
+    if (seq !== _peekSeq) return;
+    if (out.rc === '0') {
+      var v = out.value || '';
+      box.textContent = 'Now: ' + (v === '' ? '(unset)' : (v === 'null' ? '(does not exist)' : niceValue(target, v)));
+      box.dataset.now = box.textContent;
+      unitHint();
+    } else {
+      box.textContent = out.error === 'bad-target'
+        ? (kind === 'prop' ? 'Props must start with persist.' : 'Not a valid name.')
+        : 'Could not read it right now.';
+    }
+  } catch (e) {
+    if (seq === _peekSeq) box.textContent = 'Could not read it right now.';
+  }
+}
+
+async function addCustom() {
+  var kind = document.getElementById('cKind').value;
+  var target = document.getElementById('cTarget').value.trim();
+  var value = customValue();
+  if (!target || !value) { showToast('Name and value are needed', 'err'); return; }
+  var btn = document.getElementById('cAdd');
+  btn.disabled = true;
+  try {
+    var out = parseKV(await svc('--custom-add ' + shq(kind) + ' ' + shq(target) + ' ' + shq(value), 30000));
+    if (out.rc === '0') {
+      showToast('Kept: ' + target + ' = ' + niceValue(target, value), 'ok');
+      NAMES = {};
+      document.getElementById('cTarget').value = '';
+      document.getElementById('cValue').value = '';
+      document.getElementById('cPeek').textContent = 'Type a name to see its current value.';
+    } else {
+      showToast(out.error === 'bad-target'
+        ? (kind === 'prop' ? 'Props must start with persist.' : 'Not a valid name (or a built-in setting)')
+        : (out.error === 'bad-value' ? 'Value: letters, digits and . _ , : + - only'
+        : (out.error === 'full' ? 'The list is full' : 'Could not add it')), 'err');
+    }
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  }
+  btn.disabled = false;
+  await refreshStatus();
+  await loadLogs();
+}
+
+function editCustom(k) {
+  document.getElementById('cKind').value = STATUS['KIND_' + k] || 'global';
+  document.getElementById('cTarget').value = STATUS['TARGET_' + k] || '';
+  var v = STATUS['CFG_' + k] || '';
+  var target = STATUS['TARGET_' + k] || '';
+  var u = document.getElementById('cUnit');
+  if (isTimeout(target) && /^[0-9]+$/.test(v)) {
+    var n = parseInt(v, 10);
+    if (n >= 60000 && n % 60000 === 0) { u.value = 'min'; v = String(n / 60000); }
+    else if (n >= 1000) { u.value = 's'; v = String(n / 1000); }
+    else u.value = 'ms';
+  }
+  document.getElementById('cValue').value = v;
+  peekCustom();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('cValue').focus();
+}
+
+async function delCustom(k) {
+  var target = STATUS['TARGET_' + k] || k;
+  if (!confirm('Stop keeping ' + target + '?\nIt is left as it is now.')) return;
+  var card = document.getElementById('card-' + k);
+  if (card) card.classList.add('loading');
+  try {
+    var out = parseKV(await svc('--custom-del ' + shq(k), 30000));
+    showToast(out.rc === '0' ? 'Removed ' + target : 'Could not remove it', out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  }
+  await refreshStatus();
+  await loadLogs();
 }
 
 // Package names are long; the table shows the last part, the full name is
@@ -554,6 +1038,15 @@ function renderCards(st) {
 function shortPkg(v) {
   if (!v || v.indexOf('.') < 0) return v;
   return v.split(',').map(function (p) { return '…' + p.split('.').pop(); }).join(', ');
+}
+
+// The value Restore Original / uninstall would write back. Only keys the
+// module has written are restored, so the others show a dash.
+function origCell(k, st, isPkg) {
+  if (st['TOUCHED_' + k] !== '1' || st['ORIGHAS_' + k] !== '1') return '<td class="orig none">-</td>';
+  var o = st['ORIG_' + k] || '';
+  var shown = o === '' ? 'unset' : (o === 'null' ? 'none' : (isPkg ? shortPkg(o) : o));
+  return '<td class="orig' + (isPkg ? ' pkg' : '') + '" title="' + esc(o) + '">' + esc(shown) + '</td>';
 }
 
 function renderTable(st) {
@@ -576,13 +1069,14 @@ function renderTable(st) {
         (isPkg
           ? '<td class="pkg" title="' + esc(cfg) + '">' + esc(shortPkg(cfg)) + '</td>' +
             '<td class="pkg" title="' + esc(live) + '">' + esc(shortPkg(live)) + '</td>'
-          : '<td>' + esc(cfg === '' ? '—' : cfg) + '</td>' +
-            '<td>' + esc(live === '' ? '—' : live) + '</td>') +
+          : '<td>' + esc(cfg === '' ? '-' : cfg) + '</td>' +
+            '<td>' + esc(live === '' ? '-' : live) + '</td>') +
+        origCell(k, st, isPkg) +
         '<td>' + pill + '</td>' +
       '</tr>';
   });
   document.getElementById('runtimeBody').innerHTML =
-    rows || '<tr><td colspan="4" style="text-align:center;color:var(--text-dim);">no keys</td></tr>';
+    rows || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);">no keys</td></tr>';
 }
 
 async function refreshStatus() {
@@ -623,7 +1117,7 @@ async function refreshStatus() {
     lbl.style.color = 'var(--red)';
   }
 
-  var uptime = st.STARTED && DEVICE_NOW ? fmtDur(DEVICE_NOW - parseInt(st.STARTED, 10)) : '—';
+  var uptime = st.STARTED && DEVICE_NOW ? fmtDur(DEVICE_NOW - parseInt(st.STARTED, 10)) : '-';
   if (st.DAEMON === 'running') {
     meta.textContent = 'pid ' + st.DAEMON_PID +
       (events && st.WATCHER_PID && st.WATCHER_PID !== '0' ? ' · watcher ' + st.WATCHER_PID : '') +
@@ -637,7 +1131,7 @@ async function refreshStatus() {
   var modeText = st.MODE === 'events' ? 'event engine'
     : (st.MODE === 'poll' ? 'poll engine' : 'not running');
   document.getElementById('headerSub').textContent = (st.VERSION || '') + ' · ' + modeText;
-  document.getElementById('chipProfile').textContent = st.PROFILE || '—';
+  document.getElementById('chipProfile').textContent = st.PROFILE || '-';
   document.getElementById('chipPoll').textContent = st.MODE === 'poll'
     ? 'every ' + (st.POLL || '?') + 's'
     : (st.CD_FAST || '?') + 's / ' + (st.CD_SECURE || '?') + 's';
@@ -660,11 +1154,12 @@ async function refreshStatus() {
   document.getElementById('engineHint').textContent =
     st.INOTIFYD === '1'
       ? (st.MODE === 'poll' && st.ENGINE === 'auto'
-          ? 'inotify failed — fell back to timed checks'
+          ? 'inotify failed - fell back to timed checks'
           : 'inotify available')
-      : 'inotifyd not found — timed checks only';
+      : 'inotifyd not found - timed checks only';
 
   renderCards(st);
+  renderCustom(st);
   renderMock(st);
   renderTable(st);
   renderLogSize(st.LOG_SIZE);
@@ -736,7 +1231,7 @@ async function setMock() {
   var val = document.getElementById('sel-mock').value;
   card.classList.add('loading');
   try {
-    var out = parseKV(await svc('--config mock_location_app ' + val, 30000));
+    var out = parseKV(await svc('--config mock_location_app ' + shq(val), 30000));
     showToast(out.rc === '0' ? (val === 'skip' ? 'Mock app not managed' : 'Mock app set')
               : (out.error === 'not-installed' ? 'That app is not installed' : 'Failed'),
               out.rc === '0' ? 'ok' : 'err');
@@ -759,7 +1254,7 @@ async function handleToggle(key) {
   var val = inverted ? (tog.checked ? '0' : '1') : (tog.checked ? '1' : '0');
 
   try {
-    var out = parseKV(await svc('--config ' + key + ' ' + val, 30000));
+    var out = parseKV(await svc('--config ' + shq(key) + ' ' + shq(val), 30000));
     showToast(out.rc === '0' ? 'Updated' : 'Write failed', out.rc === '0' ? 'ok' : 'err');
   } catch (e) {
     showToast('Error: ' + (e.message || e), 'err');
@@ -772,11 +1267,34 @@ async function handleToggle(key) {
   await loadLogs();
 }
 
+// Hands a setting back to the user: the module stops enforcing it, and
+// Restore Original / uninstall leave it as it is.
+async function releaseKey(key) {
+  await setKey(key, 'skip', 'Not managed any more');
+}
+
+async function setKey(key, val, okMsg) {
+  var card = document.getElementById('card-' + key);
+  if (card) card.classList.add('loading');
+  try {
+    var out = parseKV(await svc('--config ' + shq(key) + ' ' + shq(val), 30000));
+    showToast(out.rc === '0' ? okMsg
+      : (out.error === 'no-usb-detect' ? 'This device does not show the USB cable state' : 'Write failed'),
+      out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  } finally {
+    if (card) card.classList.remove('loading');
+  }
+  await refreshStatus();
+  await loadLogs();
+}
+
 async function setProfile() {
   var card = document.getElementById('card-profile');
   card.classList.add('loading');
   try {
-    var out = parseKV(await svc('--config profile ' + document.getElementById('sel-profile').value, 40000));
+    var out = parseKV(await svc('--config profile ' + shq(document.getElementById('sel-profile').value), 40000));
     showToast(out.rc === '0' ? 'Profile updated' : 'Failed',
               out.rc === '0' ? 'ok' : 'err');
   } catch (e) {
@@ -792,7 +1310,7 @@ async function setEngine() {
   var card = document.getElementById('card-engine');
   card.classList.add('loading');
   try {
-    var out = parseKV(await svc('--config engine ' + document.getElementById('sel-engine').value, 20000));
+    var out = parseKV(await svc('--config engine ' + shq(document.getElementById('sel-engine').value), 20000));
     showToast(out.rc === '0' ? 'Engine updated' : 'Failed', out.rc === '0' ? 'ok' : 'err');
   } catch (e) {
     showToast('Error: ' + (e.message || e), 'err');
@@ -809,7 +1327,7 @@ async function setLogLevel() {
   card.classList.add('loading');
   try {
     var lvl = document.getElementById('sel-loglevel').value;
-    var out = parseKV(await svc('--config log_level ' + lvl, 20000));
+    var out = parseKV(await svc('--config log_level ' + shq(lvl), 20000));
     showToast(out.rc === '0' ? 'Log level updated' : 'Failed', out.rc === '0' ? 'ok' : 'err');
     if (out.rc === '0' && lvl === '2') showDebugFilter();
   } catch (e) {
@@ -821,12 +1339,17 @@ async function setLogLevel() {
 }
 
 // ── Actions ──────────────────────────────────────────────────────────────────
-var ACTION_IDS = ['btn-apply', 'btn-daemon', 'btn-restore'];
+var ACTION_IDS = ['btn-apply', 'btn-daemon', 'btn-restore', 'btn-snapshot'];
 
 async function doAction(type) {
   if (type === 'restore' &&
-      !confirm('Restore the values captured when the module was installed?\n\n' +
+      !confirm('Put back the values from before the module changed them?\n' +
+               'Settings that are not managed are left alone.\n\n' +
                'Enforcement pauses until Apply Now or the next reboot.')) return;
+  if (type === 'snapshot' &&
+      !confirm('Take the current values as the new originals?\n' +
+               'Restore Original and uninstall will then put back these values\n' +
+               'instead of the ones from before the module changed them.')) return;
 
   ACTION_IDS.forEach(function (id) { document.getElementById(id).disabled = true; });
   try {
@@ -841,6 +1364,12 @@ async function doAction(type) {
       out = parseKV(await svc('--daemon-start', 30000));
       showToast(out.rc === '0' ? 'Daemon restarted' : 'Daemon failed to start',
                 out.rc === '0' ? 'ok' : 'err');
+    } else if (type === 'snapshot') {
+      out = parseKV(await svc('--snapshot', 30000));
+      showToast(out.rc === '0'
+        ? (out.snapped === '0' ? 'Nothing to snapshot yet' : 'New snapshot · ' + out.snapped + ' value(s)')
+        : 'Snapshot failed (busy, try again)',
+                out.rc === '0' ? 'ok' : 'err');
     } else if (type === 'restore') {
       out = parseKV(await svc('--restore', 60000));
       showToast(out.rc === '0'
@@ -853,6 +1382,80 @@ async function doAction(type) {
   }
   ACTION_IDS.forEach(function (id) { document.getElementById(id).disabled = false; });
   await refreshStatus();
+  await loadLogs();
+}
+
+// ── Backup (Export / Import) ─────────────────────────────────────────────────
+// "dop-config-20261110-183000.txt" -> "2026-11-10 18:30:00"
+function backupWhen(name) {
+  var m = /^dop-config-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.txt$/.exec(name);
+  return m ? m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5] + ':' + m[6] : '';
+}
+
+async function loadBackups() {
+  var box = document.getElementById('backupList');
+  var lines;
+  try {
+    lines = (await svc('--backups', 15000)).split('\n');
+  } catch (e) {
+    box.innerHTML = '<div class="backup-empty">could not read the backup folder</div>';
+    return;
+  }
+  var html = '';
+  lines.forEach(function (l) {
+    l = l.trim();
+    if (l.indexOf('dir=') === 0) document.getElementById('backupDir').textContent = l.slice(4);
+    if (l.indexOf('BACKUP=') !== 0) return;
+    var parts = l.slice(7).split('|');
+    var name = parts[0];
+    if (!/^[A-Za-z0-9._-]+$/.test(name)) return;
+    var when = backupWhen(name);
+    html += '<div class="backup-item">' +
+        '<div class="backup-name">' + esc(name) +
+          '<span>' + (when ? esc(when) + ' · ' : '') + esc(fmtBytes(parts[1])) + '</span></div>' +
+        '<button class="backup-btn" onclick="doImport(\'' + esc(name) + '\')">import</button>' +
+      '</div>';
+  });
+  box.innerHTML = html || '<div class="backup-empty">no backups yet</div>';
+}
+
+async function doExport() {
+  var btn = document.getElementById('btn-export');
+  btn.disabled = true;
+  try {
+    var out = parseKV(await svc('--export', 15000));
+    showToast(out.rc === '0' ? 'Saved ' + out.file
+      : (out.error === 'no-dir' ? 'Cannot create ' + (out.dir || 'the backup folder') : 'Export failed'),
+      out.rc === '0' ? 'ok' : 'err');
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  }
+  btn.disabled = false;
+  await loadBackups();
+  await loadLogs();
+}
+
+async function doImport(name) {
+  if (!confirm('Load the settings from ' + name + '?\n' +
+               'Every value is checked first; lines that are not valid are skipped.')) return;
+  var btns = document.querySelectorAll('.backup-btn');
+  btns.forEach(function (b) { b.disabled = true; });
+  try {
+    var out = parseKV(await svc('--import ' + shq(name), 120000));
+    if (out.rc === '0') {
+      showToast('Imported · ' + out.changed + ' changed' +
+        (out.skipped !== '0' ? ' · ' + out.skipped + ' skipped (see log)' : ''),
+        out.skipped !== '0' ? 'err' : 'ok');
+    } else {
+      showToast(out.error === 'too-big' ? 'Not a config file (too big)'
+        : (out.error === 'not-found' ? 'File not found' : 'Import failed'), 'err');
+    }
+  } catch (e) {
+    showToast('Error: ' + (e.message || e), 'err');
+  }
+  btns.forEach(function (b) { b.disabled = false; });
+  await refreshStatus();
+  await loadBackups();
   await loadLogs();
 }
 
@@ -903,11 +1506,10 @@ async function loadLogs() {
 
 function renderLogs() {
   var body = document.getElementById('logBody');
-  // Follow new lines only when the view is at the bottom; if the user
-  // scrolled up to read older lines, keep that spot.
-  var atBottom = !body.querySelector('.log-line') ||
-    body.scrollTop + body.clientHeight >= body.scrollHeight - 24;
-  var keepTop = body.scrollTop;
+  // Newest lines first. At the top the view shows new lines as they come;
+  // if the user scrolled down to read older lines, those stay in place.
+  var atTop = !body.querySelector('.log-line') || body.scrollTop < 24;
+  var fromBottom = body.scrollHeight - body.scrollTop;
   if (!rawLines.length) {
     body.innerHTML = '<span class="log-empty">no log entries</span>';
     return;
@@ -925,6 +1527,7 @@ function renderLogs() {
     body.innerHTML = '<span class="log-empty">nothing matches the filters</span>';
     return;
   }
+  filtered.reverse();
   body.innerHTML = filtered.map(function (line) {
     var cls = 'INFO';
     if (line.indexOf('[WARN]') >= 0) cls = 'WARN';
@@ -932,10 +1535,7 @@ function renderLogs() {
     if (line.indexOf('[DEBUG]') >= 0) cls = 'DEBUG';
     return '<span class="log-line ' + cls + '">' + esc(line) + '</span>';
   }).join('\n');
-  if (!atBottom) { body.scrollTop = keepTop; return; }
-  requestAnimationFrame(function () {
-    requestAnimationFrame(function () { body.scrollTop = body.scrollHeight; });
-  });
+  body.scrollTop = atTop ? 0 : Math.max(0, body.scrollHeight - fromBottom);
 }
 
 async function clearLog() {
@@ -973,6 +1573,10 @@ async function refreshAll() {
 }
 
 async function init() {
+  try {
+    var t = localStorage.getItem('dop-tab');
+    if (t && document.getElementById('tab-' + t)) showTab(t);
+  } catch (e) {}
   var waited = 0;
   while (!hasBridge() && waited < 8000) {
     await new Promise(function (r) { setTimeout(r, 250); });
@@ -999,19 +1603,20 @@ async function init() {
   try { if (ksu.fullScreen) ksu.fullScreen(false); } catch (e) {}
 
   await refreshAll();
+  await loadBackups();
 }
 
 document.addEventListener('DOMContentLoaded', init);
 
-// One resume handler, not two — v3 registered both focus and visibilitychange
+// One resume handler, not two - v3 registered both focus and visibilitychange
 // and refreshed twice on every return to the app.
 document.addEventListener('visibilitychange', function () {
-  if (!document.hidden && EXEC_MODE) { refreshStatus(); loadLogs(); }
+  if (!document.hidden && EXEC_MODE) { refreshStatus(); loadLogs(); loadBackups(); }
 });
 
 setInterval(function () {
   if (!document.hidden && EXEC_MODE && !_busy) refreshStatus();
-}, 30000);
+}, 10000);
 
 setInterval(function () {
   if (!document.hidden && EXEC_MODE && !_busy) loadLogs();
