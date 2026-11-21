@@ -2,6 +2,15 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v10
+
+**WebUI**
+- Always opens on the Settings tab instead of the tab you used last.
+- The GitHub link on the Help page opens in your browser instead of inside the WebUI, where a website could reach the root manager.
+- Help: every command sits in its own box with a COPY button, the profile table reads well on a phone, and the back-to-top arrow shows once you scroll down.
+
+---
+
 ## v9
 
 **Module**

@@ -666,7 +666,6 @@ function showTab(name) {
     document.getElementById('tab-' + t).classList.toggle('active', t === name);
     document.getElementById('tabbtn-' + t).classList.toggle('active', t === name);
   });
-  try { localStorage.setItem('dop-tab', name); } catch (e) {}
   if (name === 'log') fitLog();
 }
 
@@ -1573,10 +1572,9 @@ async function refreshAll() {
 }
 
 async function init() {
-  try {
-    var t = localStorage.getItem('dop-tab');
-    if (t && document.getElementById('tab-' + t)) showTab(t);
-  } catch (e) {}
+  // The WebUI always opens on the Settings tab. Drop the tab that older
+  // versions remembered.
+  try { localStorage.removeItem('dop-tab'); } catch (e) {}
   var waited = 0;
   while (!hasBridge() && waited < 8000) {
     await new Promise(function (r) { setTimeout(r, 250); });

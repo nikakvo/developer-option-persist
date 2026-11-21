@@ -5,7 +5,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Android-green?style=flat-square&logo=android" />
   <img src="https://img.shields.io/badge/root-KernelSU%20%7C%20SukiSU-orange?style=flat-square" />
-  <img src="https://img.shields.io/badge/version-v9-blue?style=flat-square" />
+  <img src="https://img.shields.io/badge/version-v10-blue?style=flat-square" />
   <img src="https://img.shields.io/badge/arch-ARM64-lightgrey?style=flat-square" />
 </p>
 
@@ -92,12 +92,12 @@ If something does not work on your device, open an issue with your device, ROM, 
 
 ## Installation
 
-1. Download `developer-option-persist-v9.zip` from [Releases](https://github.com/nikakvo/developer-option-persist/releases)
+1. Download `developer-option-persist-v10.zip` from [Releases](https://github.com/nikakvo/developer-option-persist/releases)
 2. Install it from your root manager
 3. Reboot
 4. Open the module UI from the manager
 
-<img width="300" alt="Developer Options Persist WebUI" src="https://raw.githubusercontent.com/nikakvo/developer-option-persist/main/DevOptionPersist.jpg" />
+<img width="300" alt="Developer Options Persist WebUI" src="DevOptionPersist.jpg" />
 
 ---
 

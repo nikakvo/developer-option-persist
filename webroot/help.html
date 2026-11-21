@@ -9,7 +9,7 @@
       --bg:#0a0a08;--bg2:#0f0f0c;--surface:#141410;--surface2:#1a1a15;
       --border:#252520;--border2:#33332a;--amber:#f5a623;--amber-dim:#f5a62330;
       --green:#7ecb35;--green-dim:#7ecb3530;--red:#e05c5c;--red-dim:#e05c5c30;
-      --cyan:#4ecdc4;--purple:#b07fff;
+      --cyan:#4ecdc4;--purple:#b07fff;--dim:#5a5a48;
       --text:#b8b89a;--text-dim:#5a5a48;--text-hi:#eeeedd;
       --mono:ui-monospace,'IBM Plex Mono','Roboto Mono',Menlo,Consolas,monospace;
       --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -59,7 +59,7 @@
     .box ul{margin:8px 0 10px 18px;}
     .box li{margin-bottom:5px;}
     strong{color:var(--text-hi);}
-    code{font-family:var(--mono);font-size:12px;color:var(--amber);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;word-break:break-all;}
+    code{font-family:var(--mono);font-size:12px;color:var(--amber);background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;overflow-wrap:anywhere;}
 
     pre{
       background:var(--bg2);border:1px solid var(--border);border-radius:8px;
@@ -91,9 +91,43 @@
 
     .footer{text-align:center;padding:28px 16px 8px;font-size:10px;font-family:var(--mono);color:var(--text-dim);}
     .footer a{color:var(--amber);text-decoration:none;}
-    .totop{position:fixed;right:calc(env(safe-area-inset-right,0px) + 16px);bottom:calc(env(safe-area-inset-bottom,0px) + 16px);width:40px;height:40px;border-radius:50%;background:var(--surface2);border:1px solid var(--amber);color:var(--amber);display:flex;align-items:center;justify-content:center;text-decoration:none;box-shadow:0 0 10px var(--amber-dim);z-index:20;}
-    .totop:active{opacity:0.5;}
-    .totop svg{width:18px;height:18px;}
+  
+    /* Commands: mac-style box; COPY copies one command, never its comment */
+    .code-block { --cb: var(--amber); background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 10px 0; }
+    .code-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 10px 6px 12px; border-bottom: 1px solid var(--border); background: var(--surface2); }
+    .code-label { font-family: var(--mono); font-size: 9.5px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .code-header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .code-dots { display: flex; gap: 4px; }
+    .code-dot { width: 7px; height: 7px; border-radius: 50%; display: block; }
+    .code-dot:nth-child(1) { background: #ff5f57; }
+    .code-dot:nth-child(2) { background: #febc2e; }
+    .code-dot:nth-child(3) { background: #28c840; }
+    .copy-btn { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; background: transparent; border: 1px solid var(--border2); color: var(--cb); border-radius: 4px; padding: 3px 8px; font-family: var(--mono); font-size: 9.5px; font-weight: 600; letter-spacing: .05em; cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+    .copy-btn:active { background: var(--surface2); }
+    .copy-btn.copied { color: #28c840; border-color: rgba(40,200,64,.45); }
+    .copy-btn.failed { color: var(--red); border-color: var(--red); }
+    .code-block pre { margin: 0; border: 0; border-radius: 0; background: transparent; padding: 0; white-space: pre-wrap; overflow-wrap: anywhere; overflow-x: visible; }
+    .code-body { padding: 10px 12px; }
+    .cmd-row { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+    .cmd-row:last-child { border-bottom: 0; }
+    .cmd-main { flex: 1; min-width: 0; }
+    .code-block pre .sub { color: var(--amber); }
+    .code-block pre .nw { white-space: nowrap; }
+    .cmd-note { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 2px; }
+    /* Back to top */
+    .to-top { position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--border2); background: var(--surface2); color: var(--amber); display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 40; opacity: 0; pointer-events: none; transition: opacity .2s; -webkit-tap-highlight-color: transparent; }
+    .to-top.show { opacity: 1; pointer-events: auto; }
+    /* Tables on a phone: each row stacked, the name on top and its text under it */
+    @media (max-width: 640px) {
+      .tw { overflow-x: visible; }
+      .tw table, .tw tbody, .tw tr, .tw td { display: block; width: 100%; }
+      .tw tr.th-row { display: none; }
+      .tw tr { padding: 9px 0; border-bottom: 1px solid var(--border); }
+      .tw tr:last-child { border-bottom: none; }
+      .tw td { border-bottom: none; padding: 0; }
+      .tw td:first-child { white-space: normal; overflow-wrap: anywhere; padding: 0 0 3px; }
+      .tw table.multi td[data-label]::before { content: attr(data-label) ': '; color: var(--dim); font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+    }
   </style>
 </head>
 <body id="top">
@@ -238,12 +272,12 @@
 <!-- 4 -->
 <div class="sec-title" id="profiles">4 · profiles &amp; battery</div>
 <div class="box">
-  <table>
-    <tr><th>profile</th><th>global / props</th><th>secure</th><th>full check</th><th>poll tick</th></tr>
-    <tr><td>fast</td><td>1 s</td><td>2 s</td><td>5 min</td><td>15 s</td></tr>
-    <tr><td>balanced</td><td>1 s</td><td>10 s</td><td>15 min</td><td>60 s</td></tr>
-    <tr><td>battery</td><td>2 s</td><td>30 s</td><td>30 min</td><td>5 min</td></tr>
-  </table>
+  <div class="tw"><table class="multi">
+    <tr class="th-row"><th>profile</th><th>global / props</th><th>secure</th><th>full check</th><th>poll tick</th></tr>
+    <tr><td>fast</td><td data-label="global / props">1 s</td><td data-label="secure">2 s</td><td data-label="full check">5 min</td><td data-label="poll tick">15 s</td></tr>
+    <tr><td>balanced</td><td data-label="global / props">1 s</td><td data-label="secure">10 s</td><td data-label="full check">15 min</td><td data-label="poll tick">60 s</td></tr>
+    <tr><td>battery</td><td data-label="global / props">2 s</td><td data-label="secure">30 s</td><td data-label="full check">30 min</td><td data-label="poll tick">5 min</td></tr>
+  </table></div>
   <p>The first two columns are how soon a change is undone with the event engine. The last one applies only to the poll engine.</p>
   <p><strong>Balanced</strong> is the default and the right answer for almost everyone. With the event engine the profile mainly decides how often the noisy secure settings are looked at; an idle daemon costs nothing in any profile.</p>
   <div class="note">
@@ -292,7 +326,7 @@
 <div class="sec-title" id="config">6 · configuration file</div>
 <div class="box">
   <p><code>/data/adb/dev-options-persist/config</code> - outside the module directory, so it survives module updates.</p>
-  <pre><span class="cm"># 1 = force on, 0 = force off, skip = leave this setting alone</span>
+  <pre class="file"><span class="cm"># 1 = force on, 0 = force off, skip = leave this setting alone</span>
 <span class="cm"># adb_enabled also takes usb: on only while a computer is connected</span>
 adb_enabled=1
 development_settings_enabled=0
@@ -325,31 +359,38 @@ engine=auto</pre>
 <div class="sec-title" id="cli">7 · command line</div>
 <div class="box">
   <p>Everything the interface does goes through <code>service.sh</code>, so you can do all of it from a root shell or with <code>su -c</code>.</p>
-  <pre>su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status'   <span class="cm"># config, live values, daemon state</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --apply'   <span class="cm"># enforce now</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --restore'   <span class="cm"># what the module changed, pauses enforcement</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --snapshot'   <span class="cm"># today's values become the originals</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --custom-add system screen_off_timeout 600000'   <span class="cm"># global | secure | system | prop</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --custom-del c1'   <span class="cm"># id from --status CUSTOM_KEYS</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --export'   <span class="cm"># config to /sdcard/dop</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --backups'   <span class="cm"># list /sdcard/dop</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --import dop-config-20261110-183000.txt'   <span class="cm"># file name only</span>
-
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config adb_enabled 1'   <span class="cm"># 1 | 0 | usb | skip</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config profile battery'   <span class="cm"># fast | balanced | battery</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config engine poll'   <span class="cm"># auto | poll</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config mock_location_app com.example.app'   <span class="cm"># or skip</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --mock-apps'   <span class="cm"># apps offered in the picker</span>
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --config log_level 2'   <span class="cm"># 0 | 1 | 2</span>
-
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --daemon-start'
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --daemon-stop'
-
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --log 200'
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --clear-log'</pre>
+  <div class="code-block"><div class="code-header"><span class="code-label">Status and actions</span><div class="code-header-right"><div class="code-dots"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div></div></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--status</span></span>'</pre><div class="cmd-note">config, live values, daemon state</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--apply</span></span>'</pre><div class="cmd-note">enforce now</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--restore</span></span>'</pre><div class="cmd-note">what the module changed, pauses enforcement</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--snapshot</span></span>'</pre><div class="cmd-note">today's values become the originals</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--custom-add</span> system screen_off_timeout 600000</span>'</pre><div class="cmd-note">global | secure | system | prop</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--custom-del</span> c1</span>'</pre><div class="cmd-note">id from --status CUSTOM_KEYS</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--export</span></span>'</pre><div class="cmd-note">config to /sdcard/dop</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--backups</span></span>'</pre><div class="cmd-note">list /sdcard/dop</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--import</span> <span class="nw">dop-config-20261110-183000.txt</span></span>'</pre><div class="cmd-note">file name only</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+</div>
+  <div class="code-block"><div class="code-header"><span class="code-label">Settings</span><div class="code-header-right"><div class="code-dots"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div></div></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--config</span> adb_enabled 1</span>'</pre><div class="cmd-note">1 | 0 | usb | skip</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--config</span> profile battery</span>'</pre><div class="cmd-note">fast | balanced | battery</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--config</span> engine poll</span>'</pre><div class="cmd-note">auto | poll</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--config</span> mock_location_app com.example.app</span>'</pre><div class="cmd-note">or skip</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--mock-apps</span></span>'</pre><div class="cmd-note">apps offered in the picker</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--config</span> log_level 2</span>'</pre><div class="cmd-note">0 | 1 | 2</div></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+</div>
+  <div class="code-block"><div class="code-header"><span class="code-label">Daemon</span><div class="code-header-right"><div class="code-dots"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div></div></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--daemon-start</span></span>'</pre></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--daemon-stop</span></span>'</pre></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+</div>
+  <div class="code-block"><div class="code-header"><span class="code-label">Log</span><div class="code-header-right"><div class="code-dots"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div></div></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--log</span> 200</span>'</pre></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--clear-log</span></span>'</pre></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+</div>
   <p><code>--status</code> prints plain <code>key=value</code> lines, so it is easy to use in a script:</p>
-  <pre>su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status' | grep -E '^(DRIFT|MODE|WATCHER_PID)='
-su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status' | grep '^LIVE_adb_enabled='</pre>
+  <div class="code-block"><div class="code-header"><span class="code-label">In a script</span><div class="code-header-right"><div class="code-dots"><span class="code-dot"></span><span class="code-dot"></span><span class="code-dot"></span></div></div></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--status</span></span>' | grep <span class="nw">-E</span> '^(DRIFT|MODE|WATCHER_PID)='</pre></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+<div class="cmd-row"><div class="cmd-main"><pre>su <span class="nw">-c</span> 'sh /<wbr>data/<wbr>adb/<wbr>modules/<wbr><span class="nw">dev-options-persist</span>/<wbr>service.sh <span class="sub"><span class="nw">--status</span></span>' | grep '^LIVE_adb_enabled='</pre></div><button class="copy-btn" type="button" onclick="copyCode(this)"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY</button></div>
+</div>
 </div>
 
 <!-- 8 -->
@@ -402,7 +443,7 @@ su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status' | grep '^LI
 <!-- 10 -->
 <div class="sec-title" id="files">10 · file layout</div>
 <div class="box">
-  <pre>/data/adb/modules/dev-options-persist/
+  <pre class="file">/data/adb/modules/dev-options-persist/
 ├── service.sh        <span class="cm">boot flow, daemon, command interface</span>
 ├── sh/common.sh      <span class="cm">paths, key table, config, logging</span>
 ├── customize.sh      <span class="cm">installer, captures the original values</span>
@@ -426,14 +467,53 @@ su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status' | grep '^LI
 </div>
 
 <div class="footer">
-  dev options persist · <a href="https://github.com/nikakvo/developer-option-persist" target="_blank">GitHub →</a>
+  dev options persist · <a href="#" data-ext="https://github.com/nikakvo/developer-option-persist/">GitHub →</a>
 </div>
 
-<a class="totop" href="#top" aria-label="Back to top">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 15 12 9 18 15"/></svg>
-</a>
-
+<button class="to-top" id="toTop" type="button" onclick="toTop()" aria-label="Back to top"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="18 15 12 9 6 15"/></svg></button>
 <script>
+  // Outside sites open in the phone's browser. The root manager would load a
+  // link in this WebView, where the site's scripts could reach ksu.exec.
+  var _extSeq = 0, _extToastT = null;
+  function extToast(msg) {
+    var t = document.getElementById('ext-toast');
+    if (!t) {
+      t = document.createElement('div'); t.id = 'ext-toast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:88%;z-index:99;' +
+        'background:#1a0808;border:1px solid #ff4455;color:#ffd6da;font:12px/1.4 var(--mono,monospace);' +
+        'padding:8px 12px;border-radius:3px;text-align:center';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg; t.style.display = 'block';
+    clearTimeout(_extToastT); _extToastT = setTimeout(function () { t.style.display = 'none'; }, 3200);
+  }
+  function openExt(url) {
+    if (!/^https:\/\/[a-z0-9.-]+\/[a-z0-9._\/-]*$/i.test(url)) { extToast('Not opened: not an https address'); return; }
+    if (typeof ksu === 'undefined' || !ksu || typeof ksu.exec !== 'function') { extToast('Could not open the browser: no root bridge'); return; }
+    var cmd = "am start -a android.intent.action.VIEW -d '" + url + "' 2>&1";
+    var check = function (errno, out) {
+      var err = String(out || '').split('\n').filter(function (l) { return /^Error/.test(l); })[0];
+      if (errno !== 0 || err) extToast('Could not open the browser: ' + (err || 'am start ended with ' + errno));
+    };
+    var name = '__ext_cb_' + (++_extSeq) + '_' + Date.now();
+    window[name] = function (errno, stdout, stderr) {
+      try { delete window[name]; } catch (e) { window[name] = undefined; }
+      check(typeof errno === 'number' ? errno : 0, String(stdout || '') + String(stderr || ''));
+    };
+    try { ksu.exec(cmd, '{}', name); }
+    catch (e) {
+      try { delete window[name]; } catch (_) {}
+      try { var r = ksu.exec(cmd); check(0, typeof r === 'string' ? r : (r && r.stdout) || ''); }
+      catch (e2) { extToast('Could not open the browser: ' + String((e2 && e2.message) || e2)); }
+    }
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[data-ext]');
+    if (!a) return;
+    e.preventDefault();
+    openExt(a.getAttribute('data-ext'));
+  });
+
   function goBack() {
     // history.back() is right when the user arrived from index.html. Some
     // managers open a webroot file directly with no history to go back to, so
@@ -450,6 +530,47 @@ su -c 'sh /data/adb/modules/dev-options-persist/service.sh --status' | grep '^LI
       window.location.href = 'index.html';
     }
   }
+
+  // ── Copy a command (comments are not copied) ──
+  var ICON_COPY = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>COPY';
+  function codeText(pre) {
+    var c = pre.cloneNode(true);
+    c.querySelectorAll('.cm').forEach(function (n) { n.remove(); });
+    return c.textContent.replace(/\s+$/, '').replace(/^\s+/, '');
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '-1000px';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function copyCode(btn) {
+    var box = btn.closest('.cmd-row') || btn.closest('.code-block');
+    var text = codeText(box.querySelector('pre'));
+    function done(ok) {
+      btn.classList.add(ok ? 'copied' : 'failed');
+      btn.textContent = ok ? 'COPIED' : 'FAILED';
+      setTimeout(function () { btn.classList.remove('copied', 'failed'); btn.innerHTML = ICON_COPY; }, 1600);
+    }
+    // The WebView of some root managers has no navigator.clipboard, or rejects it.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(fallbackCopy(text)); });
+    } else {
+      done(fallbackCopy(text));
+    }
+  }
+  // ── Back to top ──
+  function toTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  (function () {
+    var b = document.getElementById('toTop');
+    function upd() { b.classList.toggle('show', (window.scrollY || document.documentElement.scrollTop) > 400); }
+    window.addEventListener('scroll', upd, { passive: true });
+    upd();
+  })();
 </script>
 </body>
 </html>
