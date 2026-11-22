@@ -2,6 +2,13 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## v11
+
+**WebUI**
+- Help: the contents and the links to other sections no longer add steps to the phone's Back. One Back leaves the help page, however many sections you opened.
+
+---
+
 ## v10
 
 **WebUI**

@@ -514,6 +514,23 @@ engine=auto</pre>
     openExt(a.getAttribute('data-ext'));
   });
 
+  // Links inside the page (contents, "see section 9") scroll with JavaScript
+  // and leave the address alone. A changed address is a new history entry, and
+  // then the phone's Back would walk back through every section first instead
+  // of leaving the help page.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href^="#"]');
+    if (!a || a.hasAttribute('data-ext')) return;
+    var id = a.getAttribute('href').slice(1);
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    e.preventDefault();
+    var head = document.querySelector('.header');
+    var off = head ? head.getBoundingClientRect().height : 0;
+    window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + window.scrollY - off - 8), behavior: 'smooth' });
+  });
+
   function goBack() {
     // history.back() is right when the user arrived from index.html. Some
     // managers open a webroot file directly with no history to go back to, so
