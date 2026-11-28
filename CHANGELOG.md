@@ -2,6 +2,31 @@
 
 All notable changes to Developer Options Persist are documented here.
 
+## Unreleased
+
+**Fixes**
+- Apply Now says "Apply busy, try again" while another apply is running, and shows an error when the daemon could not be restarted, instead of a green "Applied".
+- Restore Original while another apply is running answers busy and no longer drops the other apply's lock.
+- A hand-edited config whose last line has no line break no longer loses that line's setting when a missing setting is added at boot.
+- A config line holding a list of key names is not taken as one key.
+- A mock location app whose package name contains "rror" (for example a "mirror" app) is read correctly and put back on uninstall.
+- A custom value containing "Exception" is refused: Android's error text looks the same, so it could never be read back.
+- Restore Original and uninstall put back custom values that are not numbers.
+- A value that spans several lines is not saved as an original, and a setting whose original cannot be saved is not changed.
+- A config, custom list, snapshot or managed list that could only be written in part is no longer saved over the complete one, also with a system printf that does not report the failure.
+- Two processes that find the same abandoned lock can no longer both take it.
+- Adding or removing a custom setting while another apply is running answers "Busy, try again" instead of leaving the old setting's saved value behind for a new one.
+- New Snapshot says "could not save" instead of "busy" when a value could not be written.
+- Importing a config with custom settings works also when the module runs under the system shell instead of busybox.
+
+**Help**
+- The file layout lists the uninstall log and says which runtime files a reboot clears.
+
+**Tests**
+- `sh tests/run.sh` runs the module scripts against stubbed Android tools; `tests/webui-toasts.js` checks the WebUI toasts under node.
+
+---
+
 ## v11
 
 **WebUI**
