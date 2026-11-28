@@ -235,7 +235,7 @@
 
   <h3>Custom tab</h3>
   <p>Keeps any other setting at the value you choose, the same way as the built-in ones. Pick the kind - <strong>global</strong>, <strong>secure</strong> or <strong>system</strong> (Android settings) or <strong>prop</strong> (only <code>persist.*</code> properties) - type the name and the value, and tap <strong>Add</strong>. The form shows the current value while you type the name.</p>
-  <p>Values use letters, digits and <code>. _ , : + -</code>, in the form Android stores them (for example <code>600000</code> for 10 minutes of <code>screen_off_timeout</code>). <code>null</code> keeps a setting deleted. Adding the same name again changes the value; <strong>remove</strong> stops managing it and leaves it as it is. Up to 32 entries.</p>
+  <p>Values use letters, digits and <code>. _ , : + -</code> (not containing <code>Exception</code>, which reads as an Android error), in the form Android stores them (for example <code>600000</code> for 10 minutes of <code>screen_off_timeout</code>). <code>null</code> keeps a setting deleted. Adding the same name again changes the value; <strong>remove</strong> stops managing it and leaves it as it is. Up to 32 entries.</p>
   <p>The value from right before the first change is saved, so Restore Original and uninstall put it back. <strong>system</strong> settings get the same cooldown as secure ones: HyperOS rewrites both files every few seconds.</p>
 
   <h3>Xiaomi-specific</h3>
@@ -456,11 +456,13 @@ engine=auto</pre>
 ├── managed           <span class="cm">settings the module has changed</span>
 ├── original          <span class="cm">values from right before the first change</span>
 ├── logs/service.log  <span class="cm">rotates at 128 KB</span>
-└── run/              <span class="cm">runtime only, cleared on boot</span>
+├── logs/uninstall.log  <span class="cm">what uninstall did; kept with the saved values if the settings service never answered</span>
+└── run/              <span class="cm">runtime only</span>
     ├── state         <span class="cm">counters, engine, pids</span>
-    ├── daemon.pid
-    ├── watcher.pid
-    ├── events        <span class="cm">FIFO between inotifyd and the daemon</span>
+    ├── daemon.pid    <span class="cm">cleared on boot</span>
+    ├── watcher.pid   <span class="cm">cleared on boot</span>
+    ├── events        <span class="cm">FIFO between inotifyd and the daemon, cleared on boot</span>
+    ├── locks/        <span class="cm">apply, config and scan locks, cleared on boot</span>
     ├── mock-scan     <span class="cm">per-app scan results (package, version, 0/1)</span>
     └── mock-scan.stamp  <span class="cm">packages.xml state the scan matches</span></pre>
   <p>Nothing mutable lives in the module directory, because a module update replaces it wholesale.</p>
