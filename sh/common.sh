@@ -14,7 +14,7 @@ MODDIR="${MODDIR:-/data/adb/modules/$MODULE_ID}"
 # ── Paths ─────────────────────────────────────────────────────────────────────
 # Everything mutable lives outside the module directory, which a module update
 # replaces wholesale.
-DATA_DIR="/data/adb/$MODULE_ID"
+DATA_DIR="${DOP_DATA_DIR:-/data/adb/$MODULE_ID}" # DOP_DATA_DIR: test harness only
 CONFIG_FILE="$DATA_DIR/config"
 ORIGINAL_FILE="$DATA_DIR/original"
 # Keys the module has written since it last took them over. Only these are
@@ -125,10 +125,11 @@ key_info() {
 
 # ── Custom keys ───────────────────────────────────────────────────────────────
 # valid_custom_value <value> - letters, digits and . _ , : + - only. No spaces,
-# so a `cmd` failure message can never pass for a value.
+# so a `cmd` failure message can never pass for a value. Nor "Exception",
+# which read_live takes for cmd's failure text: such a value never reads back.
 valid_custom_value() {
   case "$1" in
-    '' | *[!A-Za-z0-9._,:+-]*) return 1 ;;
+    '' | *[!A-Za-z0-9._,:+-]* | *Exception*) return 1 ;;
   esac
   [ "${#1}" -le 92 ]
 }
@@ -241,6 +242,10 @@ valid_pkg() {
 
 # valid_value <key> <value> - what the config accepts for a managed key.
 valid_value() {
+  # One key name: a list of them would pass the callers' " $BASE_KEYS " match.
+  case "$1" in
+    '' | *[!a-z_]*) return 1 ;;
+  esac
   case "$2" in
     skip) return 0 ;;
   esac
@@ -316,10 +321,20 @@ key_want() {
 mock_holders() {
   _mh_out=$(appops query-op android:mock_location allow 2>&1)
   case "$_mh_out" in
-    *Failure* | *Exception* | *rror*)
+    *Failure* | *Exception*)
       unset _mh_out
       return 1 ;;
   esac
+  # "rror" is error text only outside a package name (com.example.mirror).
+  for _mh_p in $_mh_out; do
+    case "$_mh_p" in
+      *Error) ;;
+      *rror*) valid_pkg "$_mh_p" && continue ;;
+      *) continue ;;
+    esac
+    unset _mh_out _mh_p
+    return 1
+  done
   MOCK=""
   for _mh_p in $_mh_out; do
     valid_pkg "$_mh_p" && MOCK="${MOCK:+$MOCK,}$_mh_p"
@@ -800,15 +815,15 @@ lock_acquire() { # lock_acquire <dir> <seconds>
     _lk_o=""
     [ -f "$1/pid" ] && read -r _lk_o <"$1/pid" 2>/dev/null
     if [ -n "$_lk_o" ]; then
+      _lk_empty=0
       if ! pid_alive "$_lk_o"; then
-        rm -rf "$1" 2>/dev/null
-        continue
+        lock_takeover "$1" && break
       fi
     else
       _lk_empty=$((_lk_empty + 1))
       if [ "$_lk_empty" -ge 3 ]; then
-        rm -rf "$1" 2>/dev/null
-        continue
+        _lk_empty=0
+        lock_takeover "$1" empty && break
       fi
     fi
     [ "$_lk_t" -le 0 ] && {
@@ -824,6 +839,35 @@ lock_acquire() { # lock_acquire <dir> <seconds>
 }
 
 lock_release() { rm -rf "$1" 2>/dev/null; return 0; }
+
+# lock_takeover <dir> [empty] - takes over a lock whose owner is gone (with
+# "empty": that has no owner written). Two waiters that both saw the dead
+# owner must not both remove the lock: the second would remove the first
+# one's fresh lock. So only the holder of <dir>.takeover (mkdir is atomic)
+# removes a lock, after reading its owner once more, and it writes its own
+# pid into the new lock before it lets the guard go: the next guard holder
+# sees a live owner and leaves it. The guard is an empty directory only its
+# holder removes; a process killed inside leaves it until boot clears
+# LOCK_DIR, and that lock then waits for its owner instead of a takeover.
+# Returns 0 when the caller now holds the lock.
+lock_takeover() {
+  mkdir "$1.takeover" 2>/dev/null || return 1
+  _lt_o=""
+  [ -f "$1/pid" ] && read -r _lt_o <"$1/pid" 2>/dev/null
+  if [ -n "$_lt_o" ]; then
+    pid_alive "$_lt_o" || rm -rf "$1" 2>/dev/null
+  elif [ "$2" = empty ]; then
+    rm -rf "$1" 2>/dev/null
+  fi
+  _lt_rc=1
+  if mkdir "$1" 2>/dev/null; then
+    echo "$$" >"$1/pid" 2>/dev/null
+    _lt_rc=0
+  fi
+  rmdir "$1.takeover" 2>/dev/null
+  unset _lt_o
+  return "$_lt_rc"
+}
 
 # ── Config ────────────────────────────────────────────────────────────────────
 write_default_config() {
@@ -866,6 +910,9 @@ ensure_config() {
     write_default_config
     return 0
   fi
+  # A hand-edited file may end without a newline: a line added below would
+  # join its last line and make that value invalid.
+  [ -n "$(tail -c 1 "$CONFIG_FILE" 2>/dev/null)" ] && echo >>"$CONFIG_FILE"
   grep -q '^profile=' "$CONFIG_FILE" || echo "profile=balanced" >>"$CONFIG_FILE"
   grep -q '^log_level=' "$CONFIG_FILE" || echo "log_level=1" >>"$CONFIG_FILE"
   grep -q '^engine=' "$CONFIG_FILE" || echo "engine=auto" >>"$CONFIG_FILE"
@@ -967,6 +1014,19 @@ load_config() {
   return 0
 }
 
+# _lines_ok <file> <n> - the file holds exactly n complete lines. The writers
+# below count the lines they printed: a short write that printf did not
+# report (an external printf exits 0 when the file system refuses the data)
+# still fails here.
+_lines_ok() {
+  _lo_n=0
+  while IFS= read -r _lo_l; do
+    _lo_n=$((_lo_n + 1))
+  done <"$1" 2>/dev/null
+  unset _lo_l
+  [ "$_lo_n" -eq "$2" ]
+}
+
 # write_cfg <key> <value> - replaces the line in place, so the file keeps its
 # order and comments, and appends the key if it was missing.
 write_cfg() {
@@ -976,6 +1036,8 @@ write_cfg() {
   }
   _wc_tmp="$CONFIG_FILE.tmp.$$"
   _wc_done=0
+  _wc_ok=1
+  _wc_n=0
   {
     if [ -f "$CONFIG_FILE" ]; then
       while IFS= read -r _wc_l || [ -n "$_wc_l" ]; do
@@ -985,25 +1047,25 @@ write_cfg() {
         case "$_wc_l" in
           *=*)
             if [ "$_t" = "$1" ]; then
-              [ "$_wc_done" -eq 0 ] && printf '%s=%s\n' "$1" "$2"
+              if [ "$_wc_done" -eq 0 ]; then printf '%s=%s\n' "$1" "$2" && _wc_n=$((_wc_n + 1)) || _wc_ok=0; fi
               _wc_done=1
               continue
             fi ;;
         esac
-        printf '%s\n' "$_wc_l"
+        printf '%s\n' "$_wc_l" && _wc_n=$((_wc_n + 1)) || _wc_ok=0
       done <"$CONFIG_FILE"
     fi
-    [ "$_wc_done" -eq 1 ] || printf '%s=%s\n' "$1" "$2"
+    if [ "$_wc_done" -ne 1 ]; then printf '%s=%s\n' "$1" "$2" && _wc_n=$((_wc_n + 1)) || _wc_ok=0; fi
   } >"$_wc_tmp" 2>/dev/null
 
   _wc_rc=1
-  if [ -s "$_wc_tmp" ]; then
+  if [ "$_wc_ok" -eq 1 ] && [ -s "$_wc_tmp" ] && _lines_ok "$_wc_tmp" "$_wc_n"; then
     chmod 600 "$_wc_tmp" 2>/dev/null
     mv -f "$_wc_tmp" "$CONFIG_FILE" 2>/dev/null && _wc_rc=0
   fi
   rm -f "$_wc_tmp" 2>/dev/null
   lock_release "$CONFIG_LOCK"
-  unset _wc_tmp _wc_done _wc_l _t
+  unset _wc_n _wc_tmp _wc_done _wc_ok _wc_l _t
   return "$_wc_rc"
 }
 
@@ -1068,17 +1130,26 @@ capture_originals() {
   mkdir -p "$DATA_DIR" 2>/dev/null
   _co_tmp="$ORIGINAL_FILE.tmp.$$"
   _co_settings_ok=0
+  _co_wok=1
+  _co_n=0
   : >"$_co_tmp"
   for _co_k in $KEYS; do
     if read_live "$_co_k"; then
-      printf '%s=%s\n' "$_co_k" "$LIVE_RAW" >>"$_co_tmp"
+      # A value over several lines would add lines for other keys.
+      case "$LIVE_RAW" in *"$_NL"*) continue ;; esac
+      printf '%s=%s\n' "$_co_k" "$LIVE_RAW" >>"$_co_tmp" && _co_n=$((_co_n + 1)) || _co_wok=0
       case "$KIND" in
         global | secure) _co_settings_ok=1 ;;
       esac
     fi
   done
-  # Only keep the snapshot if the settings provider actually answered.
-  if [ "$_co_settings_ok" -eq 1 ]; then
+  # Only keep the snapshot if it was written and the settings provider
+  # actually answered.
+  if [ "$_co_wok" -ne 1 ] || ! _lines_ok "$_co_tmp" "$_co_n"; then
+    rm -f "$_co_tmp"
+    log_error "Could not write the original values - not captured yet"
+    _co_rc=1
+  elif [ "$_co_settings_ok" -eq 1 ]; then
     chmod 600 "$_co_tmp" 2>/dev/null
     mv -f "$_co_tmp" "$ORIGINAL_FILE"
     log_info "Captured original values"
@@ -1088,7 +1159,7 @@ capture_originals() {
     log_warn "Could not capture original values yet - settings provider not ready"
     _co_rc=1
   fi
-  unset _co_tmp _co_k _co_settings_ok
+  unset _co_n _co_tmp _co_k _co_settings_ok _co_wok
   return "$_co_rc"
 }
 
@@ -1123,39 +1194,52 @@ orig_lookup() {
 # set_original <key> <value> - replaces (or adds) one line of the snapshot,
 # creating the file if needed. Called right before the module first writes
 # a key, so the snapshot holds the value from just before that write.
+# Returns 1 only when the snapshot could not be written.
 set_original() {
+  # A value over several lines would add lines for other keys; it is not
+  # kept, so Restore Original and uninstall leave the key as it is.
+  case "$2" in
+    *"$_NL"*)
+      log_warn "original value of $1 spans several lines - not kept"
+      return 0 ;;
+  esac
   mkdir -p "$DATA_DIR" 2>/dev/null
   _so_tmp="$ORIGINAL_FILE.tmp.$$"
+  _so_ok=1
+  _so_n=0
   {
     if [ -f "$ORIGINAL_FILE" ]; then
       while IFS= read -r _so_l || [ -n "$_so_l" ]; do
         case "$_so_l" in
           "$1="*) ;;
-          *) printf '%s\n' "$_so_l" ;;
+          *) printf '%s\n' "$_so_l" && _so_n=$((_so_n + 1)) || _so_ok=0 ;;
         esac
       done <"$ORIGINAL_FILE"
     fi
-    printf '%s=%s\n' "$1" "$2"
+    printf '%s=%s\n' "$1" "$2" && _so_n=$((_so_n + 1)) || _so_ok=0
   } >"$_so_tmp" 2>/dev/null
   chmod 600 "$_so_tmp" 2>/dev/null
-  mv -f "$_so_tmp" "$ORIGINAL_FILE" 2>/dev/null || rm -f "$_so_tmp" 2>/dev/null
-  unset _so_tmp _so_l
-  return 0
+  _so_rc=0
+  if [ "$_so_ok" -eq 1 ] && _lines_ok "$_so_tmp" "$_so_n" && mv -f "$_so_tmp" "$ORIGINAL_FILE" 2>/dev/null; then :; else rm -f "$_so_tmp" 2>/dev/null; _so_rc=1; fi
+  unset _so_n _so_tmp _so_l _so_ok
+  return "$_so_rc"
 }
 
 # drop_original <key> - removes the key's line from the snapshot.
 drop_original() {
   [ -f "$ORIGINAL_FILE" ] || return 0
   _do_tmp="$ORIGINAL_FILE.tmp.$$"
+  _do_ok=1
+  _do_n=0
   while IFS= read -r _do_l || [ -n "$_do_l" ]; do
     case "$_do_l" in
       "$1="*) ;;
-      *) printf '%s\n' "$_do_l" ;;
+      *) printf '%s\n' "$_do_l" && _do_n=$((_do_n + 1)) || _do_ok=0 ;;
     esac
   done <"$ORIGINAL_FILE" >"$_do_tmp" 2>/dev/null
   chmod 600 "$_do_tmp" 2>/dev/null
-  mv -f "$_do_tmp" "$ORIGINAL_FILE" 2>/dev/null || rm -f "$_do_tmp" 2>/dev/null
-  unset _do_tmp _do_l
+  if [ "$_do_ok" -eq 1 ] && _lines_ok "$_do_tmp" "$_do_n" && mv -f "$_do_tmp" "$ORIGINAL_FILE" 2>/dev/null; then :; else rm -f "$_do_tmp" 2>/dev/null; fi
+  unset _do_n _do_tmp _do_l _do_ok
   return 0
 }
 
@@ -1173,21 +1257,25 @@ is_touched() {
 }
 
 # set_touched <key> <1|0> - add the key to, or remove it from, TOUCHED_FILE.
+# Returns 1 when the file could not be written.
 set_touched() {
   mkdir -p "$DATA_DIR" 2>/dev/null
   _tc_tmp="$TOUCHED_FILE.tmp.$$"
+  _tc_ok=1
+  _tc_n=0
   {
     if [ -f "$TOUCHED_FILE" ]; then
       while IFS= read -r _tc_l || [ -n "$_tc_l" ]; do
-        [ -n "$_tc_l" ] && [ "$_tc_l" != "$1" ] && printf '%s\n' "$_tc_l"
+        if [ -n "$_tc_l" ] && [ "$_tc_l" != "$1" ]; then printf '%s\n' "$_tc_l" && _tc_n=$((_tc_n + 1)) || _tc_ok=0; fi
       done <"$TOUCHED_FILE"
     fi
-    [ "$2" = 1 ] && printf '%s\n' "$1"
+    if [ "$2" = 1 ]; then printf '%s\n' "$1" && _tc_n=$((_tc_n + 1)) || _tc_ok=0; fi
   } >"$_tc_tmp" 2>/dev/null
   chmod 600 "$_tc_tmp" 2>/dev/null
-  mv -f "$_tc_tmp" "$TOUCHED_FILE" 2>/dev/null || rm -f "$_tc_tmp" 2>/dev/null
-  unset _tc_tmp _tc_l
-  return 0
+  _tc_rc=0
+  if [ "$_tc_ok" -eq 1 ] && _lines_ok "$_tc_tmp" "$_tc_n" && mv -f "$_tc_tmp" "$TOUCHED_FILE" 2>/dev/null; then :; else rm -f "$_tc_tmp" 2>/dev/null; _tc_rc=1; fi
+  unset _tc_n _tc_tmp _tc_l _tc_ok
+  return "$_tc_rc"
 }
 
 # ensure_touched - versions before v8.2 had no TOUCHED_FILE. For them every
@@ -1197,17 +1285,19 @@ ensure_touched() {
   [ -f "$TOUCHED_FILE" ] && return 0
   mkdir -p "$DATA_DIR" 2>/dev/null
   _et_tmp="$TOUCHED_FILE.tmp.$$"
+  _et_ok=1
+  _et_n=0
   : >"$_et_tmp"
   if [ -f "$ORIGINAL_FILE" ]; then
     for _et_k in $KEYS; do
       eval "_et_v=\$CFG_$_et_k"
       [ "$_et_v" = skip ] && continue
-      grep -q "^$_et_k=" "$ORIGINAL_FILE" 2>/dev/null && printf '%s\n' "$_et_k" >>"$_et_tmp"
+      if grep -q "^$_et_k=" "$ORIGINAL_FILE" 2>/dev/null; then printf '%s\n' "$_et_k" >>"$_et_tmp" && _et_n=$((_et_n + 1)) || _et_ok=0; fi
     done
   fi
   chmod 600 "$_et_tmp" 2>/dev/null
-  mv -f "$_et_tmp" "$TOUCHED_FILE" 2>/dev/null || rm -f "$_et_tmp" 2>/dev/null
-  unset _et_tmp _et_k _et_v
+  if [ "$_et_ok" -eq 1 ] && _lines_ok "$_et_tmp" "$_et_n" && mv -f "$_et_tmp" "$TOUCHED_FILE" 2>/dev/null; then :; else rm -f "$_et_tmp" 2>/dev/null; fi
+  unset _et_n _et_tmp _et_k _et_v _et_ok
   return 0
 }
 
@@ -1242,8 +1332,10 @@ restore_originals() {
           continue
         } ;;
     esac
-    case "$KIND:$_ro_v" in
-      raw:*) ;;
+    # Custom values were checked above; an empty one is put back for a
+    # property only (unset), as uninstall.sh does.
+    [ "$TYPE" = raw ] && { [ -n "$_ro_v" ] || [ "$KIND" = prop ] || continue; }
+    [ "$TYPE" = raw ] || case "$KIND:$_ro_v" in
       appop:none) ;;
       appop:*)
         case "$_ro_v" in '' | *[!A-Za-z0-9._,]*) continue ;; esac ;;
@@ -1450,7 +1542,6 @@ mock_scan() {
   fi
 
   _ms_tmp="$MOCK_CACHE.tmp.$$"
-  _ms_new=0
   : >"$_ms_tmp"
   # Lines look like "package:com.example versionCode:123".
   printf '%s\n' "$_ms_list" | while read -r _ms_a _ms_b; do
@@ -1484,7 +1575,7 @@ mock_scan() {
   fi
   rm -f "$_ms_tmp" 2>/dev/null
   rm -rf "$MOCK_SCAN_LOCK"
-  unset _ms_stamp _ms_list _ms_tmp _ms_new _ms_o
+  unset _ms_stamp _ms_list _ms_tmp _ms_o
   return 0
 }
 
