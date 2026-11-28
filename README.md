@@ -166,7 +166,7 @@ The **Custom** tab keeps any setting you add, the same way as the built-in ones:
 
 - **Kind**: `global`, `secure` or `system` (Android settings) or `prop` (only `persist.*` properties).
 - **Name**: the setting or property name, for example `screen_off_timeout`. The form shows its current value as you type.
-- **Value**: letters, digits and `. _ , : + -`. Use the form Android itself stores (for example `600000` for 10 minutes of `screen_off_timeout`). `null` keeps a setting deleted.
+- **Value**: letters, digits and `. _ , : + -`, not containing `Exception` (that reads as an Android error). Use the form Android itself stores (for example `600000` for 10 minutes of `screen_off_timeout`). `null` keeps a setting deleted.
 - Adding the same kind and name again changes its value. **remove** stops managing it and leaves the setting as it is now.
 - Up to 32 entries. Built-in settings cannot be added here; they have their own cards.
 - The value from right before the first change is saved, so Restore Original and uninstall put it back like for the built-in settings.

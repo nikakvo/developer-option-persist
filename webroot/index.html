@@ -989,7 +989,8 @@ async function addCustom() {
       showToast(out.error === 'bad-target'
         ? (kind === 'prop' ? 'Props must start with persist.' : 'Not a valid name (or a built-in setting)')
         : (out.error === 'bad-value' ? 'Value: letters, digits and . _ , : + - only'
-        : (out.error === 'full' ? 'The list is full' : 'Could not add it')), 'err');
+        : (out.error === 'full' ? 'The list is full'
+        : (out.error === 'busy' ? 'Busy, try again' : 'Could not add it'))), 'err');
     }
   } catch (e) {
     showToast('Error: ' + (e.message || e), 'err');
@@ -1024,7 +1025,8 @@ async function delCustom(k) {
   if (card) card.classList.add('loading');
   try {
     var out = parseKV(await svc('--custom-del ' + shq(k), 30000));
-    showToast(out.rc === '0' ? 'Removed ' + target : 'Could not remove it', out.rc === '0' ? 'ok' : 'err');
+    showToast(out.rc === '0' ? 'Removed ' + target
+      : (out.error === 'busy' ? 'Busy, try again' : 'Could not remove it'), out.rc === '0' ? 'ok' : 'err');
   } catch (e) {
     showToast('Error: ' + (e.message || e), 'err');
   }
@@ -1355,7 +1357,9 @@ async function doAction(type) {
     var out;
     if (type === 'apply') {
       out = parseKV(await svc('--apply', 60000));
-      showToast(out.daemon === 'restarted'
+      if (out.rc !== '0') showToast(out.error === 'busy' ? 'Apply busy, try again' : 'Apply failed', 'err');
+      else if (out.daemon === 'failed') showToast('Applied · daemon failed to start', 'err');
+      else showToast(out.daemon === 'restarted'
         ? 'Applied · daemon restarted'
         : 'Applied · ' + (out.applied || '0') + ' correction(s)', 'ok');
     } else if (type === 'daemon') {
@@ -1367,13 +1371,13 @@ async function doAction(type) {
       out = parseKV(await svc('--snapshot', 30000));
       showToast(out.rc === '0'
         ? (out.snapped === '0' ? 'Nothing to snapshot yet' : 'New snapshot · ' + out.snapped + ' value(s)')
-        : 'Snapshot failed (busy, try again)',
+        : (out.error === 'busy' ? 'Snapshot failed (busy, try again)' : 'Snapshot failed (could not save)'),
                 out.rc === '0' ? 'ok' : 'err');
     } else if (type === 'restore') {
       out = parseKV(await svc('--restore', 60000));
       showToast(out.rc === '0'
         ? (out.paused === '1' ? 'Restored · enforcement paused' : 'Original values restored')
-        : 'No snapshot available',
+        : (out.error === 'busy' ? 'Restore busy, try again' : 'No snapshot available'),
                 out.rc === '0' ? 'ok' : 'err');
     }
   } catch (e) {

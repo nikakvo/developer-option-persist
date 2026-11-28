@@ -55,6 +55,8 @@ done
 unset _k
 
 APPLIED=0
+# Keys whose original could not be saved; each is logged once per process.
+SO_FAILED=" "
 
 # check_keys <keys> - verify and correct. Returns 1 if the apply lock was
 # busy (another process is applying right now); the caller retries later.
@@ -144,9 +146,19 @@ check_keys() {
     # The first write since the module took this key over: the snapshot
     # gets the value from right before it, and the key is marked as one to
     # put back on Restore Original and uninstall.
+    # Without its original (or its managed mark) the key could never be put
+    # back, so it is left alone until both can be written.
     if ! is_touched "$_ck_k"; then
-      set_original "$_ck_k" "$LIVE_RAW"
-      set_touched "$_ck_k" 1
+      if ! set_original "$_ck_k" "$LIVE_RAW" || ! set_touched "$_ck_k" 1; then
+        case "$SO_FAILED" in
+          *" $_ck_k "*) ;;
+          *)
+            SO_FAILED="$SO_FAILED$_ck_k "
+            log_error "$_ck_k: the original value could not be saved - not changed until it can" ;;
+        esac
+        eval "RES_$_ck_k=fail"
+        continue
+      fi
       log_info "Captured original $_ck_k=${LIVE_RAW:-<unset>}"
     fi
 
@@ -572,6 +584,7 @@ cmd_apply() {
   load_config
   check_keys "$KEYS" || {
     echo "applied=0"
+    echo "error=busy"
     echo "rc=1"
     return 1
   }
@@ -599,6 +612,13 @@ cmd_restore() {
   fi
   load_config
   log_sep "Restoring original values"
+  # The apply lock comes first, so a busy lock leaves everything as it is.
+  if ! lock_acquire "$APPLY_LOCK" 5; then
+    log_error "Restore: another apply is running - nothing restored"
+    echo "error=busy"
+    echo "rc=1"
+    return 1
+  fi
   # A running daemon would put the managed values straight back, so
   # enforcement is paused until Apply Now or the next reboot.
   if daemon_is_running; then
@@ -607,7 +627,6 @@ cmd_restore() {
   else
     _cr_paused=0
   fi
-  lock_acquire "$APPLY_LOCK" 5
   restore_originals
   lock_release "$APPLY_LOCK"
   if [ "$_cr_paused" -eq 1 ]; then
@@ -636,24 +655,32 @@ cmd_snapshot() {
   fi
   _cs_n=0
   _cs_bad=0
+  _cs_fail=0
   for _cs_k in $KEYS; do
     is_touched "$_cs_k" || continue
     if read_live "$_cs_k"; then
-      set_original "$_cs_k" "$LIVE_RAW"
-      log_info "snapshot: $_cs_k=$LIVE_RAW"
-      _cs_n=$((_cs_n + 1))
+      if set_original "$_cs_k" "$LIVE_RAW"; then
+        log_info "snapshot: $_cs_k=$LIVE_RAW"
+        _cs_n=$((_cs_n + 1))
+      else
+        log_error "snapshot: $_cs_k could not be saved - old original kept"
+        _cs_fail=$((_cs_fail + 1))
+      fi
     else
       log_warn "snapshot: $_cs_k unreadable - old original kept"
       _cs_bad=$((_cs_bad + 1))
     fi
   done
   lock_release "$APPLY_LOCK"
-  log_info "New snapshot taken: $_cs_n value(s), $_cs_bad unreadable"
+  log_info "New snapshot taken: $_cs_n value(s), $_cs_bad unreadable, $_cs_fail not saved"
   echo "snapped=$_cs_n"
   echo "unreadable=$_cs_bad"
-  echo "rc=0"
-  unset _cs_n _cs_bad _cs_k
-  return 0
+  echo "failed=$_cs_fail"
+  _cs_rc=0
+  [ "$_cs_fail" -eq 0 ] || _cs_rc=1
+  echo "rc=$_cs_rc"
+  unset _cs_n _cs_bad _cs_fail _cs_k
+  return "$_cs_rc"
 }
 
 # --export - writes the current config (managed keys + tuning, already
@@ -814,10 +841,11 @@ cmd_import() {
     esac
   done
   for _ci_p in $_ci_cust; do
-    _ci_kind=${_ci_p%%|*}
-    _ci_v=${_ci_p##*|}
-    _ci_t=${_ci_p#*|}
-    _ci_t=${_ci_t%|*}
+    # "|" quoted: unquoted, mksh reads it as a pattern alternative.
+    _ci_kind=${_ci_p%%"|"*}
+    _ci_v=${_ci_p##*"|"}
+    _ci_t=${_ci_p#*"|"}
+    _ci_t=${_ci_t%"|"*}
     load_config
     _ci_have=0
     for _ci_k in $CUSTOM_KEYS; do
@@ -856,29 +884,31 @@ write_custom() {
   }
   _wcu_tmp="$CUSTOM_FILE.tmp.$$"
   _wcu_done=0
+  _wcu_ok=1
+  _wcu_n=0
   {
-    printf '# Custom keys: <id> <kind> <target> <value>. Managed by the WebUI.\n'
+    printf '# Custom keys: <id> <kind> <target> <value>. Managed by the WebUI.\n' && _wcu_n=$((_wcu_n + 1)) || _wcu_ok=0
     for _wcu_k in $CUSTOM_KEYS; do
       [ "$_wcu_k" = "$1" ] && continue
       if [ "$_wcu_k" = "$2" ]; then
-        printf '%s %s %s %s\n' "$2" "$3" "$4" "$5"
+        printf '%s %s %s %s\n' "$2" "$3" "$4" "$5" && _wcu_n=$((_wcu_n + 1)) || _wcu_ok=0
         _wcu_done=1
         continue
       fi
       key_info "$_wcu_k"
       eval "_wcu_v=\$CFG_$_wcu_k"
-      printf '%s %s %s %s\n' "$_wcu_k" "$KIND" "$TARGET" "$_wcu_v"
+      printf '%s %s %s %s\n' "$_wcu_k" "$KIND" "$TARGET" "$_wcu_v" && _wcu_n=$((_wcu_n + 1)) || _wcu_ok=0
     done
-    [ -n "$2" ] && [ "$_wcu_done" -eq 0 ] && printf '%s %s %s %s\n' "$2" "$3" "$4" "$5"
+    if [ -n "$2" ] && [ "$_wcu_done" -eq 0 ]; then printf '%s %s %s %s\n' "$2" "$3" "$4" "$5" && _wcu_n=$((_wcu_n + 1)) || _wcu_ok=0; fi
   } >"$_wcu_tmp" 2>/dev/null
   _wcu_rc=1
-  if [ -s "$_wcu_tmp" ]; then
+  if [ "$_wcu_ok" -eq 1 ] && [ -s "$_wcu_tmp" ] && _lines_ok "$_wcu_tmp" "$_wcu_n"; then
     chmod 600 "$_wcu_tmp" 2>/dev/null
     mv -f "$_wcu_tmp" "$CUSTOM_FILE" 2>/dev/null && _wcu_rc=0
   fi
   rm -f "$_wcu_tmp" 2>/dev/null
   lock_release "$CONFIG_LOCK"
-  unset _wcu_tmp _wcu_done _wcu_k _wcu_v
+  unset _wcu_n _wcu_tmp _wcu_done _wcu_ok _wcu_k _wcu_v
   return "$_wcu_rc"
 }
 
@@ -919,17 +949,25 @@ cmd_custom_add() {
     _cca_new=1
   fi
   # A new id may have been used by a deleted key: start it clean, so its
-  # snapshot is taken fresh right before the first write.
-  if [ "$_cca_new" -eq 1 ] && lock_acquire "$APPLY_LOCK" 5; then
+  # snapshot is taken fresh right before the first write. Without the apply
+  # lock that cannot be done, so nothing is added.
+  if [ "$_cca_new" -eq 1 ]; then
+    if ! lock_acquire "$APPLY_LOCK" 5; then
+      echo "error=busy"
+      echo "rc=1"
+      unset _cca_id _cca_max _cca_n _cca_k _cca_num _cca_new
+      return 1
+    fi
     set_touched "$_cca_id" 0
     drop_original "$_cca_id"
-    lock_release "$APPLY_LOCK"
   fi
   if ! write_custom "" "$_cca_id" "$1" "$2" "$3"; then
+    [ "$_cca_new" -eq 1 ] && lock_release "$APPLY_LOCK"
     echo "rc=1"
     unset _cca_id _cca_max _cca_n _cca_k _cca_num _cca_new
     return 1
   fi
+  [ "$_cca_new" -eq 1 ] && lock_release "$APPLY_LOCK"
   load_config
   if [ "$_cca_new" -eq 1 ]; then
     log_info "Custom: added $1/$2=$3"
@@ -1008,6 +1046,13 @@ cmd_custom_names() {
 # built-in keys, the setting is left as it is now.
 cmd_custom_del() {
   load_config
+  case "$1" in
+    c[1-9] | c[1-9][0-9] | c[1-9][0-9][0-9]) ;;
+    *)
+      echo "error=not-found"
+      echo "rc=1"
+      return 1 ;;
+  esac
   case " $CUSTOM_KEYS " in
     *" $1 "*) ;;
     *)
@@ -1018,16 +1063,23 @@ cmd_custom_del() {
   key_info "$1"
   _ccd_kind=$KIND
   _ccd_t=$TARGET
-  if ! write_custom "$1" ""; then
+  # Its managed mark and original go with it; without the apply lock they
+  # cannot, so the key is kept.
+  if ! lock_acquire "$APPLY_LOCK" 5; then
+    echo "error=busy"
     echo "rc=1"
     unset _ccd_kind _ccd_t
     return 1
   fi
-  if lock_acquire "$APPLY_LOCK" 5; then
-    set_touched "$1" 0
-    drop_original "$1"
+  if ! write_custom "$1" ""; then
     lock_release "$APPLY_LOCK"
+    echo "rc=1"
+    unset _ccd_kind _ccd_t
+    return 1
   fi
+  set_touched "$1" 0
+  drop_original "$1"
+  lock_release "$APPLY_LOCK"
   load_config
   log_info "Custom: removed $_ccd_kind/$_ccd_t - left as it is"
   daemon_is_running && kill -USR1 "$(daemon_pid)" 2>/dev/null

@@ -11,7 +11,7 @@
 # module directory.
 
 MODULE_ID="dev-options-persist"
-DATA_DIR="/data/adb/$MODULE_ID"
+DATA_DIR="${DOP_DATA_DIR:-/data/adb/$MODULE_ID}" # DOP_DATA_DIR: test harness only
 ORIGINAL_FILE="$DATA_DIR/original"
 TOUCHED_FILE="$DATA_DIR/managed"
 CONFIG_FILE="$DATA_DIR/config"
@@ -51,7 +51,11 @@ settings_ready() {
 # restore_mock <pkg[,pkg]|none> - the mock location app from before install.
 restore_mock() {
   cur=$(appops query-op android:mock_location allow 2>&1)
-  case "$cur" in *Failure* | *Exception* | *rror*) return 1 ;; esac
+  case "$cur" in *Failure* | *Exception*) return 1 ;; esac
+  # "rror" is error text only outside a package name (com.example.mirror).
+  for p in $cur; do
+    case "$p" in *Error) return 1 ;; *.*[A-Za-z0-9]) ;; *rror*) return 1 ;; esac
+  done
   for p in $cur; do
     case "$p" in *.*[A-Za-z0-9]) ;; *) continue ;; esac
     case ",$1," in
